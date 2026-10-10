@@ -5,19 +5,27 @@
     </div>
 
     <el-card class="search-card">
-      <el-input
-        v-model="query"
-        placeholder="输入搜索关键词，例如：如何部署系统？"
-        size="large"
-        clearable
-        @keyup.enter="doSearch"
-      >
-        <template #append>
-          <el-button type="primary" @click="doSearch" :loading="searching">
-            <el-icon><Search /></el-icon> 搜索
-          </el-button>
-        </template>
-      </el-input>
+      <div class="search-toolbar">
+        <el-input
+          v-model="query"
+          placeholder="输入搜索关键词，例如：如何部署系统？"
+          size="large"
+          clearable
+          @keyup.enter="doSearch"
+        >
+          <template #append>
+            <el-button type="primary" @click="doSearch" :loading="searching">
+              <el-icon><Search /></el-icon> 搜索
+            </el-button>
+          </template>
+        </el-input>
+        <el-radio-group v-model="mode" size="default" class="mode-group">
+          <el-radio-button value="hybrid">混合</el-radio-button>
+          <el-radio-button value="vector">向量</el-radio-button>
+          <el-radio-button value="keyword">关键词</el-radio-button>
+          <el-radio-button value="pageindex">PageIndex</el-radio-button>
+        </el-radio-group>
+      </div>
     </el-card>
 
     <!-- Results -->
@@ -27,11 +35,11 @@
       </div>
       <el-card v-for="(item, i) in results" :key="i" class="result-card" shadow="hover">
         <div class="result-header">
-          <el-tag size="small" :type="item.match_type === 'vector' ? '' : item.match_type === 'keyword' ? 'warning' : 'success'">
-            {{ item.match_type === 'vector' ? '向量' : item.match_type === 'keyword' ? '关键词' : '混合' }}
+          <el-tag size="small" :type="matchTypeTag(item.match_type)">
+            {{ matchTypeLabel(item.match_type) }}
           </el-tag>
           <span class="result-score">相关度: {{ (item.score * 100).toFixed(1) }}%</span>
-          <span class="result-source" v-if="item.file_name">📄 {{ item.file_name }}</span>
+          <span class="result-source" v-if="item.filename">📄 {{ item.filename }}</span>
         </div>
         <div class="result-content" v-html="highlightContent(item.content)"></div>
         <div class="result-footer" v-if="item.metadata">
@@ -42,7 +50,12 @@
       </el-card>
     </div>
 
-    <el-empty v-if="searched && results.length === 0" description="未找到相关结果" />
+    <el-empty v-if="searched && results.length === 0">
+      <template #description>
+        <span v-if="hint">{{ hint }}</span>
+        <span v-else>未找到相关结果</span>
+      </template>
+    </el-empty>
     <el-empty v-if="!searched" description="输入关键词开始搜索" />
   </div>
 </template>
@@ -57,7 +70,9 @@ const route = useRoute()
 const kbId = route.params.id as string
 const kbName = ref('')
 const query = ref('')
+const mode = ref<'hybrid' | 'vector' | 'keyword' | 'pageindex'>('hybrid')
 const results = ref<any[]>([])
+const hint = ref('')
 const searching = ref(false)
 const searched = ref(false)
 const searchTime = ref(0)
@@ -69,14 +84,30 @@ const doSearch = async () => {
   }
   searching.value = true
   searched.value = true
+  hint.value = ''
   const start = Date.now()
   try {
-    const data: any = await search(kbId, query.value.trim(), 10)
-    results.value = data.results || []
+    const data: any = await search(kbId, query.value.trim(), 10, mode.value)
+    results.value = data.items || data.results || []
     searchTime.value = data.took_ms || (Date.now() - start)
+    if (data.message) hint.value = data.message
+    if (data.error) hint.value = data.error
   } catch { /* handled */ } finally {
     searching.value = false
   }
+}
+
+const matchTypeLabel = (t: string) => {
+  const map: Record<string, string> = {
+    vector: '向量', keyword: '关键词', hybrid: '混合', pageindex: 'PageIndex'
+  }
+  return map[t] || t
+}
+const matchTypeTag = (t: string) => {
+  const map: Record<string, string> = {
+    vector: '', keyword: 'warning', hybrid: 'success', pageindex: 'danger'
+  }
+  return (map[t] || 'info') as any
 }
 
 const highlightContent = (content: string) => {
@@ -101,6 +132,13 @@ onMounted(async () => {
 .page-header { margin-bottom: 20px; }
 .page-title { margin: 0; font-size: 20px; font-weight: 600; }
 .search-card { margin-bottom: 20px; }
+.search-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.search-toolbar .el-input { flex: 1; }
+.mode-group { flex-shrink: 0; white-space: nowrap; }
 .result-meta {
   font-size: 14px;
   color: #909399;

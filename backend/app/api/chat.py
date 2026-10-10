@@ -71,6 +71,7 @@ async def chat(kb_id: UUID, req: schemas.ChatReq,
             kb_id=str(kb_id), question=req.question,
             history=history, top_n=req.top_n,
             system_prompt=req.system_prompt,
+            retrieval_mode=req.retrieval_mode,
         ):
             etype = event.get("type")
             if etype == "meta":

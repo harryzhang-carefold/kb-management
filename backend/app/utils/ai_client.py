@@ -1,5 +1,5 @@
 """AI 客户端：Embedding + LLM（均为 OpenAI 兼容 API）。"""
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 import time
 
 from loguru import logger
@@ -90,6 +90,35 @@ class LLMClient:
                 token_count += 1
                 yield {"type": "token", "token": delta.content}
         yield {"type": "done", "full": full, "token_count": token_count}
+
+    def chat(self, messages: list[dict], model: Optional[str] = None,
+             temperature: float = 0.0, max_tokens: int = 4096,
+             timeout: float = 60, json_mode: bool = False) -> str:
+        """非流式 chat，返回完整文本。
+
+        json_mode=True 时请求 response_format=json_object（vllm 支持）；
+        若端点不支持该参数（APIError 400），自动退化为普通调用。
+        """
+        model = model or settings.pageindex_llm_model
+        base: dict[str, Any] = dict(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+        )
+        if not json_mode:
+            resp = self.client.chat.completions.create(**base)  # type: ignore[arg-type]
+            return resp.choices[0].message.content or ""
+        base["response_format"] = {"type": "json_object"}
+        try:
+            resp = self.client.chat.completions.create(**base)  # type: ignore[arg-type]
+        except Exception as e:
+            # 端点不支持 response_format → 退化
+            logger.warning(f"json_mode unsupported ({e}); retrying without response_format")
+            base.pop("response_format", None)
+            resp = self.client.chat.completions.create(**base)  # type: ignore[arg-type]
+        return resp.choices[0].message.content or ""
 
     def health(self) -> bool:
         try:

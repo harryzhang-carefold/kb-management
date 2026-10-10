@@ -201,7 +201,7 @@ class ChunkOut(BaseModel):
 # ============================================================
 class SearchReq(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
-    mode: str = Field("hybrid", pattern="^(hybrid|vector|keyword)$")
+    mode: str = Field("hybrid", pattern="^(hybrid|vector|keyword|pageindex)$")
     top_k: int = Field(10, ge=1, le=100)
     filters: Optional[dict] = None
 
@@ -213,7 +213,7 @@ class SearchResultItem(BaseModel):
     chunk_index: int
     content: str
     score: float
-    match_type: str  # vector | keyword | hybrid
+    match_type: str  # vector | keyword | hybrid | pageindex
     metadata: dict = {}
 
 
@@ -237,6 +237,7 @@ class ChatReq(BaseModel):
     history: list[ChatMessageReq] = Field(default_factory=list)
     top_n: int = Field(5, ge=1, le=20)
     system_prompt: Optional[str] = None
+    retrieval_mode: str = Field("hybrid", pattern="^(hybrid|vector|keyword|pageindex)$")
 
 
 class ConversationOut(BaseModel):

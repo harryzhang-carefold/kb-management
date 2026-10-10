@@ -170,7 +170,9 @@ class ProcessTask(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
 
     __table_args__ = (
-        CheckConstraint("task_type IN ('parse','chunk_index','cleanup')", name="ck_task_type"),
+        CheckConstraint(
+            "task_type IN ('parse','chunk_index','pageindex','cleanup')",
+            name="process_task_task_type_check"),
         CheckConstraint("status IN ('pending','running','success','failed')", name="ck_task_status"),
         Index("idx_task_doc", "document_id"),
         Index("idx_task_status", "status"),

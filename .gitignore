@@ -41,3 +41,6 @@ uploads/
 exports/
 *.db
 *.sqlite
+
+# temp (test/scratch)
+05-temp/

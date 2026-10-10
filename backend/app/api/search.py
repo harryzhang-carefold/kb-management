@@ -23,6 +23,29 @@ def search(kb_id: UUID, req: schemas.SearchReq,
         raise not_found("知识库不存在")
     require_kb_access(user, kb)
 
+    # PageIndex 检索：跳过 embedding，直接走 pageindex_engine（LLM 推理）
+    if req.mode == "pageindex":
+        from app.services.pageindex_engine import retrieve as pageindex_retrieve
+        hits, took_ms, extra = pageindex_retrieve(
+            str(kb_id), req.query, req.top_k, filters=req.filters,
+        )
+        items = [
+            schemas.SearchResultItem(
+                chunk_id=h["chunk_id"], document_id=h["document_id"],
+                filename=h["filename"], chunk_index=h["chunk_index"],
+                content=h["content"], score=h.get("score", 0.0),
+                match_type=h.get("match_type", "pageindex"),
+                metadata=h.get("metadata", {}),
+            ) for h in hits
+        ]
+        payload = {"items": items, "total": len(items), "took_ms": took_ms}
+        # v2 需求 4：无 pageindex 索引文档时附带提示（不静默回退）
+        if extra and extra.get("message"):
+            payload["message"] = extra["message"]
+        if extra and extra.get("error"):
+            payload["error"] = extra["error"]
+        return ok(payload)
+
     # 向量检索需要 query embedding
     query_vector = []
     if req.mode in ("hybrid", "vector"):

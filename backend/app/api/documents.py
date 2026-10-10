@@ -2,7 +2,7 @@
 import uuid
 import io
 
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -51,8 +51,16 @@ def list_docs(kb_id: UUID,
 @router.post("/knowledge-bases/{kb_id}/documents")
 async def upload_doc(kb_id: UUID,
                      file: UploadFile = File(...),
+                     index_type: str = Form("embedding", pattern="^(embedding|pageindex)$"),
                      db: Session = Depends(get_db),
                      user: User = Depends(get_current_user)):
+    """上传文档。
+
+    index_type（v2，按文档二选一，互斥）：
+    - "embedding"（默认，保持现有行为）：解析 → 分块 → 向量索引（ES）
+    - "pageindex"：解析 → 分块+向量索引（保留原文/锚点）→ 异步构建 PageIndex 树索引
+    文档自身记录 index_type 到 meta，重建索引按此执行。
+    """
     kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
     if not kb:
         raise not_found("知识库不存在")
@@ -77,11 +85,12 @@ async def upload_doc(kb_id: UUID,
     minio_key = f"kb/{kb_id}/doc/{doc_id}.{ftype}"
     minio_client.put_object(minio_key, data, content_type=file.content_type or "application/octet-stream")
 
-    # 建 document
+    # 建 document（v2：记录该文档的索引方式 index_type，二选一互斥）
     doc = Document(
         kb_id=kb_id, uploaded_by=user.id,
         filename=file.filename or "unnamed", file_type=ftype,
         file_size=len(data), minio_key=minio_key, status="uploaded",
+        meta={"index_type": index_type},
     )
     db.add(doc)
     db.flush()  # 生成 doc.id
@@ -204,11 +213,96 @@ def reparse_doc(kb_id: UUID, doc_id: UUID,
     doc.chunk_count = 0
     doc.error_message = None
     doc.version += 1
-    task = ProcessTask(document_id=doc_id, task_type="parse", status="pending")
+    # reparse 会换 full_text → 旧 PageIndex 树偏移失效，清掉；
+    # 保留 index_type（v2：重建按该文档自身的 index_type 执行）
+    meta = dict(doc.meta or {})
+    if meta.get("index_type") == "pageindex":
+        meta.pop("pageindex_tree", None)
+        meta["pageindex_status"] = "none"
+    elif "pageindex_tree" in meta:
+        meta.pop("pageindex_tree", None)
+        meta.pop("pageindex_status", None)
+    doc.meta = meta
+    # 显式生成 id 并 refresh 回填，确保 delay 时 id 可用
+    task = ProcessTask(id=uuid.uuid4(), document_id=doc_id,
+                       task_type="parse", status="pending")
     db.add(task)
     db.commit()
     db.refresh(task)
     parse_document_task.delay(str(doc_id), str(task.id))
+    return ok({"task_id": task.id})
+
+
+@router.post("/knowledge-bases/{kb_id}/documents/{doc_id}/reindex")
+def reindex_doc(kb_id: UUID, doc_id: UUID,
+                db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
+    """文档级重建索引（v2）：按该文档的 index_type 执行。
+
+    - index_type=pageindex → 重建 PageIndex 树索引（build_pageindex_task）
+    - index_type=embedding（默认/旧文档）→ 重建分块+向量索引（chunk_index_task）
+    """
+    from app.workers.tasks import build_pageindex_task, chunk_index_task
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb, min_role="editor")
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).first()
+    if not doc:
+        raise not_found("文档不存在")
+    if not doc.full_text:
+        raise param_error("文档尚未解析完成，无法重建索引")
+
+    index_type = (doc.meta or {}).get("index_type", "embedding")
+
+    if index_type == "pageindex":
+        meta = dict(doc.meta or {})
+        meta["pageindex_status"] = "building"
+        doc.meta = meta
+        # 显式生成 id：避免依赖 commit/refresh 回填
+        task = ProcessTask(id=uuid.uuid4(), document_id=doc_id,
+                           task_type="pageindex", status="pending")
+        build_pageindex_task.delay(str(doc_id), str(task.id))
+    else:
+        # embedding 重建：复用 chunk_index 任务（full_text 已存在，仅重切块+重向量）
+        task = ProcessTask(id=uuid.uuid4(), document_id=doc_id,
+                           task_type="chunk_index", status="pending")
+        chunk_index_task.delay(str(doc_id), str(task.id))
+
+    db.add(task)
+    db.commit()
+    return ok({"task_id": task.id, "index_type": index_type})
+
+
+@router.post("/knowledge-bases/{kb_id}/documents/{doc_id}/pageindex/rebuild")
+def rebuild_pageindex(kb_id: UUID, doc_id: UUID,
+                      db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)):
+    """手动触发 PageIndex 树索引重建（异步 Celery 任务）。
+
+    v2：仅对 index_type=pageindex 的文档有效；其他文档返回 400 提示。
+    """
+    from app.workers.tasks import build_pageindex_task
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb, min_role="editor")
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).first()
+    if not doc:
+        raise not_found("文档不存在")
+    if (doc.meta or {}).get("index_type") != "pageindex":
+        raise param_error("该文档不是 PageIndex 索引方式，请使用“重建索引”按文档索引方式执行")
+    if not doc.full_text:
+        raise param_error("文档尚未解析完成，无法构建 PageIndex 树索引")
+    # 标记 building
+    meta = dict(doc.meta or {})
+    meta["pageindex_status"] = "building"
+    doc.meta = meta
+    task = ProcessTask(document_id=doc_id, task_type="pageindex", status="pending")
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    build_pageindex_task.delay(str(doc_id), str(task.id))
     return ok({"task_id": task.id})
 
 

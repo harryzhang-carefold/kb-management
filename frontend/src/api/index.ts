@@ -14,15 +14,16 @@ export const listKbs = () => api.get('/knowledge-bases')
 export const createKb = (name: string, description?: string) =>
   api.post('/knowledge-bases', { name, description })
 export const getKb = (id: string) => api.get(`/knowledge-bases/${id}`)
-export const updateKb = (id: string, data: { name?: string; description?: string }) =>
+export const updateKb = (id: string, data: { name?: string; description?: string; chunk_size?: number; chunk_overlap?: number; status?: string }) =>
   api.put(`/knowledge-bases/${id}`, data)
 export const deleteKb = (id: string) => api.delete(`/knowledge-bases/${id}`)
 
 // Documents
 export const listDocs = (kbId: string) => api.get(`/knowledge-bases/${kbId}/documents`)
-export const uploadDoc = (kbId: string, file: File) => {
+export const uploadDoc = (kbId: string, file: File, indexType: 'embedding' | 'pageindex' = 'embedding') => {
   const fd = new FormData()
   fd.append('file', file)
+  fd.append('index_type', indexType)  // v2：按文档二选一索引方式
   return api.post(`/knowledge-bases/${kbId}/documents`, fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000
@@ -36,23 +37,30 @@ export const deleteDoc = (kbId: string, docId: string) =>
   api.delete(`/knowledge-bases/${kbId}/documents/${docId}`)
 export const reparseDoc = (kbId: string, docId: string) =>
   api.post(`/knowledge-bases/${kbId}/documents/${docId}/reparse`)
+// v2：文档级重建索引，按该文档 index_type 执行（pageindex → 建树 / embedding → 分块+向量）
+export const reindexDoc = (kbId: string, docId: string) =>
+  api.post(`/knowledge-bases/${kbId}/documents/${docId}/reindex`)
+export const rebuildPageindex = (kbId: string, docId: string) =>
+  api.post(`/knowledge-bases/${kbId}/documents/${docId}/pageindex/rebuild`)
 
-// Search
-export const search = (kbId: string, query: string, topK = 10) =>
-  api.post(`/knowledge-bases/${kbId}/search`, { query, top_k: topK })
+// Search（mode: hybrid / vector / keyword / pageindex）
+export const search = (kbId: string, query: string, topK = 10, mode = 'hybrid') =>
+  api.post(`/knowledge-bases/${kbId}/search`, { query, top_k: topK, mode })
 
 // Chat
+// retrievalMode: hybrid / vector / keyword / pageindex
 export const chatStream = (
   kbId: string,
   question: string,
   conversationId: string | undefined,
   onToken: (text: string) => void,
   onDone: (data: any) => void,
-  onError: (err: string) => void
+  onError: (err: string) => void,
+  retrievalMode = 'hybrid'
 ) => {
   const store = (window as any).__userStore
   const token = store?.token || localStorage.getItem('kb_token') || ''
-  const body: Record<string, unknown> = { question }
+  const body: Record<string, unknown> = { question, retrieval_mode: retrievalMode }
   if (conversationId) body.conversation_id = conversationId
 
   fetch(`/kb-management/api/v1/knowledge-bases/${kbId}/chat`, {
@@ -68,27 +76,42 @@ export const chatStream = (
     const decoder = new TextDecoder()
     let buffer = ''
     let fullText = ''
+    let sources: any[] = []
+    let conversationIdOut: string | null = null
     const read = () => {
       reader.read().then(({ done, value }) => {
-        if (done) { onDone(fullText); return }
+        if (done) { onDone({ full: fullText, sources, conversation_id: conversationIdOut }); return }
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
+        let currentEvent = ''
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const payload = line.slice(6).trim()
-            try {
-              const data = JSON.parse(payload)
-              if (data.type === 'token' && data.content) {
-                fullText += data.content
-                onToken(data.content)
-              } else if (data.type === 'done') {
-                onDone(data)
-              } else if (data.type === 'error') {
-                onError(data.message)
-              }
-            } catch { /* ignore parse errors */ }
+          // 兼容 SSE `event:` 行 与 `data.type` 两种协议
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim()
+            continue
           }
+          if (!line.startsWith('data: ')) continue
+          const payload = line.slice(6).trim()
+          try {
+            const data = JSON.parse(payload)
+            const type = data.type || currentEvent
+            if (type === 'token' && (data.token || data.content)) {
+              const t = data.token || data.content
+              fullText += t
+              onToken(t)
+            } else if (type === 'sources') {
+              sources = data.sources || []
+            } else if (type === 'meta') {
+              if (data.conversation_id) conversationIdOut = data.conversation_id
+            } else if (type === 'done') {
+              onDone({ full: fullText, sources, conversation_id: conversationIdOut, ...data })
+              return
+            } else if (type === 'error') {
+              onError(data.message || '未知错误')
+              return
+            }
+          } catch { /* ignore parse errors */ }
         }
         read()
       })

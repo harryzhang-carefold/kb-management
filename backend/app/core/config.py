@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     llm_api_key: Optional[str] = None
     llm_model: str = "default"
 
+    # ---- PageIndex（无向量、树索引 + LLM 推理检索）----
+    pageindex_llm_model: str = "vllm-qwen3.8-27b"  # 建树/检索推理专用模型（复用 llm_base_url/api_key）
+    pageindex_build_timeout: int = 300    # 建树单次 LLM 调用超时（秒）
+    pageindex_retrieve_timeout: int = 60  # 检索推理单次 LLM 调用超时（秒）
+
     # ---- RAG 参数 ----
     rag_top_k: int = 10
     rag_top_n: int = 5

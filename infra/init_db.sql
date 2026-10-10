@@ -117,7 +117,7 @@ CREATE TABLE process_task (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     document_id     UUID         NOT NULL REFERENCES document(id) ON DELETE CASCADE,
     task_type       VARCHAR(50)  NOT NULL
-                    CHECK (task_type IN ('parse', 'chunk_index', 'cleanup')),
+                    CHECK (task_type IN ('parse', 'chunk_index', 'pageindex', 'cleanup')),
     status          VARCHAR(20)  NOT NULL DEFAULT 'pending'
                     CHECK (status IN ('pending', 'running', 'success', 'failed')),
     celery_task_id  VARCHAR(255) DEFAULT NULL,

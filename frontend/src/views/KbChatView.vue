@@ -38,7 +38,7 @@
               <div class="msg-sources" v-if="msg.sources && msg.sources.length">
                 <span class="sources-label">参考来源:</span>
                 <el-tag v-for="(src, si) in msg.sources" :key="si" size="small" class="source-tag">
-                  {{ (src as any).file_name || ('片段 ' + Number(si) + 1) }}
+                  {{ (src as any).filename || `片段 ${si + 1}` }}
                 </el-tag>
               </div>
             </div>
@@ -61,15 +61,23 @@
             placeholder="输入问题，Enter 发送，Shift+Enter 换行"
             @keydown.enter.exact.prevent="sendQuestion"
           />
-          <el-button
-            type="primary"
-            class="send-btn"
-            :disabled="!question.trim() || streaming"
-            :loading="streaming"
-            @click="sendQuestion"
-          >
-            <el-icon><Promotion /></el-icon> 发送
-          </el-button>
+          <div class="input-right">
+            <el-radio-group v-model="retrievalMode" size="small" class="mode-group">
+              <el-radio-button value="hybrid">混合</el-radio-button>
+              <el-radio-button value="vector">向量</el-radio-button>
+              <el-radio-button value="keyword">关键词</el-radio-button>
+              <el-radio-button value="pageindex">PageIndex</el-radio-button>
+            </el-radio-group>
+            <el-button
+              type="primary"
+              class="send-btn"
+              :disabled="!question.trim() || streaming"
+              :loading="streaming"
+              @click="sendQuestion"
+            >
+              <el-icon><Promotion /></el-icon> 发送
+            </el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -92,6 +100,7 @@ const currentConvId = ref<string | null>(null)
 const question = ref('')
 const streaming = ref(false)
 const streamText = ref('')
+const retrievalMode = ref<'hybrid' | 'vector' | 'keyword' | 'pageindex'>('hybrid')
 const messagesRef = ref<HTMLElement | null>(null)
 
 const renderMarkdown = (text: string): string => {
@@ -162,11 +171,11 @@ const sendQuestion = () => {
     },
     (data: any) => {
       streaming.value = false
-      sources = data.sources || []
+      sources = data.sources || sources
       if (data.conversation_id) currentConvId.value = data.conversation_id
       messages.value.push({
         role: 'assistant',
-        content: fullText || (data.answer || ''),
+        content: fullText || (data.full || data.answer || ''),
         sources
       })
       streamText.value = ''
@@ -177,7 +186,8 @@ const sendQuestion = () => {
       streaming.value = false
       streamText.value = ''
       ElMessage.error(err || '请求失败')
-    }
+    },
+    retrievalMode.value
   )
 }
 
@@ -299,5 +309,13 @@ onMounted(fetchConversations)
   gap: 10px;
   align-items: flex-end;
 }
+.input-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.mode-group { white-space: nowrap; }
 .send-btn { height: 60px; }
 </style>

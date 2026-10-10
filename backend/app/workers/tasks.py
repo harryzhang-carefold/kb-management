@@ -66,8 +66,11 @@ def parse_document_task(self, document_id: str, task_id: str):
         from app.parsing import parse_document as _parse
         text, meta = _parse(data, doc.filename, doc.file_type)
 
-        # 存全文 + 元数据
-        _update_doc(db, document_id, status="parsed", full_text=text, meta=meta)
+        # 存全文 + 元数据（v2：保留 index_type，解析 meta 不覆盖）
+        new_meta = dict(meta or {})
+        old_meta = dict(doc.meta or {})
+        new_meta["index_type"] = old_meta.get("index_type", "embedding")
+        _update_doc(db, document_id, status="parsed", full_text=text, meta=new_meta)
         _update_task(db, task_id, status="success",
                      result=f"parsed {len(text)} chars",
                      finished_at=__import__("datetime").datetime.utcnow())
@@ -96,7 +99,12 @@ def parse_document_task(self, document_id: str, task_id: str):
 
 @celery_app.task(base=KBTask, bind=True, name="kb.chunk_and_index", queue="kb")
 def chunk_index_task(self, document_id: str, task_id: str):
-    """阶段2：分块 → 批量 embedding → 写 ES。"""
+    """阶段2：分块 → 批量 embedding → 写 ES。
+
+    v2：按文档 index_type 分流——
+    - "pageindex"：跳过分块/向量（一个文档只建一种索引），直接链式触发 PageIndex 建树
+    - 其他（"embedding"/旧文档）：原有 chunk+ES 路径，行为不变
+    """
     logger.info(f"[chunk_index] start doc={document_id}")
     db = SessionLocal()
     try:
@@ -105,6 +113,15 @@ def chunk_index_task(self, document_id: str, task_id: str):
             return
         if not doc.full_text:
             _update_task(db, task_id, status="failed", error_message="full_text 为空")
+            return
+
+        # v2：按文档 index_type 分流（默认 embedding 保持现有行为）
+        if (doc.meta or {}).get("index_type") == "pageindex":
+            logger.info(f"[chunk_index] doc={document_id} index_type=pageindex → 跳过 chunk/向量索引，直接建树")
+            _update_task(db, task_id, status="success",
+                         result="skipped (index_type=pageindex)",
+                         finished_at=__import__("datetime").datetime.utcnow())
+            _queue_pageindex_build(db, doc, document_id)
             return
 
         _update_doc(db, document_id, status="chunking")
@@ -177,6 +194,108 @@ def chunk_index_task(self, document_id: str, task_id: str):
         _update_doc(db, document_id, status="failed", error_message=str(e)[:2000])
         _update_task(db, task_id, status="failed", error_message=str(e)[:2000],
                      finished_at=__import__("datetime").datetime.utcnow())
+        raise
+    finally:
+        db.close()
+
+
+def _queue_pageindex_build(db: Session, doc: Document, document_id: str):
+    """链式触发 PageIndex 建树（按文档 index_type 决策，v2）。
+
+    触发点：chunk_index_task 对 pageindex 文档的分流处 / reparse 后。
+    触发失败只记日志，不影响主流程。
+    """
+    try:
+        # 显式生成 id：避免依赖 commit/refresh 回填（回填时序受 expire_on_commit
+        # 影响，曾导致 delay(str(task.id)) 传 "None"）
+        pi_task = ProcessTask(id=uuid.uuid4(), document_id=document_id,
+                              task_type="pageindex", status="pending")
+        db.add(pi_task)
+        db.commit()
+        build_pageindex_task.delay(document_id, str(pi_task.id))
+        logger.info(f"[chunk_index] pageindex build queued doc={document_id} task={pi_task.id}")
+    except Exception as e:
+        logger.error(f"[chunk_index] pageindex trigger failed doc={document_id}: {e}")
+
+
+@celery_app.task(base=KBTask, bind=True, name="kb.build_pageindex", queue="kb",
+                 time_limit=900, soft_time_limit=840)
+def build_pageindex_task(self, document_id: str, task_id: str):
+    """阶段3：PageIndex 树索引构建（LLM 密集，30-120s）。
+
+    触发条件（v2）：文档 meta.index_type == "pageindex"（上传时按文档二选一），
+    或 rebuild API / reparse 链式触发（重建按该文档的 index_type 执行）。
+
+    失败**不得**把 document.status 置 failed，
+    只写 meta.pageindex_status='failed' + ProcessTask.error_message。
+    """
+    from datetime import datetime
+    from app.services.pageindex_engine import build_tree_index
+    logger.info(f"[pageindex_build] start doc={document_id}")
+    db = SessionLocal()
+    try:
+        _update_task(db, task_id, status="running", started_at=datetime.utcnow())
+        doc = db.query(Document).filter_by(id=document_id).first()
+        if not doc:
+            _update_task(db, task_id, status="failed", error_message="文档不存在")
+            return
+        if (doc.meta or {}).get("index_type") != "pageindex":
+            _update_task(db, task_id, status="failed",
+                         error_message="该文档 index_type 不是 pageindex，无需建树")
+            return
+        if not doc.full_text:
+            _update_task(db, task_id, status="failed", error_message="full_text 为空")
+            meta = dict(doc.meta or {})
+            meta["pageindex_status"] = "failed"
+            doc.meta = meta
+            db.commit()
+            return
+
+        # 标记 building + 状态置为索引中（pageindex 文档的唯一索引阶段）
+        doc.status = "chunking"
+        meta = dict(doc.meta or {})
+        meta["pageindex_status"] = "building"
+        doc.meta = meta
+        db.commit()
+
+        tree_meta = build_tree_index(doc, db)
+
+        # 刷新 doc 读取最新 meta（build_tree_index 已 commit）
+        db.expire_all()
+        doc = db.query(Document).filter_by(id=document_id).first()
+        status = (doc.meta or {}).get("pageindex_status", tree_meta.get("status", "ok"))
+        # 树建好（ok/degraded）→ 文档就绪，状态置 indexed（pageindex 文档的唯一索引）
+        if status in ("ok", "degraded"):
+            doc.status = "indexed"
+            doc.indexed_at = datetime.utcnow()
+            db.commit()
+        _update_task(db, task_id, status="success",
+                     result=f"pageindex tree: status={status} "
+                            f"nodes={tree_meta.get('node_count')} "
+                            f"build_ms={tree_meta.get('build_ms')}",
+                     finished_at=datetime.utcnow())
+        logger.info(f"[pageindex_build] done doc={document_id} status={status}")
+
+    except Exception as e:
+        import traceback as _tb
+        err = f"[pageindex_build] failed doc={document_id}: {e}\n{_tb.format_exc()}"
+        logger.error(err)
+        try:
+            with open("/tmp/kb_worker_errors.log", "a") as _f:
+                _f.write(err + "\n---\n")
+        except Exception:
+            pass
+        # pageindex 文档建树失败 = 无可用索引 → 状态置 failed（v2 无 chunk 兜底）
+        doc = db.query(Document).filter_by(id=document_id).first()
+        if doc:
+            meta = dict(doc.meta or {})
+            meta["pageindex_status"] = "failed"
+            doc.meta = meta
+            doc.status = "failed"
+            doc.error_message = str(e)[:2000]
+            db.commit()
+        _update_task(db, task_id, status="failed", error_message=str(e)[:2000],
+                     finished_at=datetime.utcnow())
         raise
     finally:
         db.close()

@@ -160,15 +160,17 @@
 
 ### POST `.../documents`
 上传文档（multipart/form-data）。
-**Form**: `file`（必填）
+**Form**: `file`（必填）、`index_type`（可选，`embedding`|`pageindex`，默认 `embedding`，v2 按文档二选一索引方式，互斥）
 **支持格式**: `.pdf .docx .pptx .xlsx .txt .md .html .htm .jpg .jpeg .png .bmp .webp .tiff`
 （`.xls` 不支持，返回 40001 提示另存为 `.xlsx`）
 **大小上限（按类型）**: pdf 15MB（MinerU CPU 解析时长保护）/ docx·pptx·xlsx·图片 20MB / txt·md·html 10MB
+- `index_type=embedding`（默认）：解析 → 分块 → 向量索引（现有行为）。
+- `index_type=pageindex`：解析 → 异步 LLM 建树（跳过分块/向量），完成后 `status=indexed`。
 **Response 200**:
 ```json
 { "code": 0, "data": { "document_id": "uuid", "status": "uploaded", "task_id": "uuid" } }
 ```
-**Error**: 41301 文件过大（超按类型上限），40001 不支持的文件类型。
+**Error**: 41301 文件过大（超按类型上限），40001 不支持的文件类型，422 `index_type` 取值非法。
 
 ### GET `.../documents/{id}`
 文档详情（含最新 task 状态）。**Response 200**: `DocumentDetail`。
@@ -178,10 +180,16 @@
 
 ### GET `.../documents/{id}/chunks`
 查看分块列表。**Query**: `page`, `page_size`
-**Response 200**: 分页 `items: Chunk[]`。
+**Response 200**: 分页 `items: Chunk[]`。（pageindex 文档无 chunk）
 
 ### POST `.../documents/{id}/reparse`
-重新解析（重置状态，重新入队）。**Response 200**: `{ "task_id": "uuid" }`。
+重新解析（重置状态，重新入队；pageindex 文档会清旧树并按 index_type 重建）。**Response 200**: `{ "task_id": "uuid" }`。
+
+### POST `.../documents/{id}/reindex`
+文档级重建索引（v2）：按该文档 `index_type` 执行——`pageindex` → 重建树索引；`embedding`（默认/旧文档）→ 重建分块+向量索引。**Response 200**: `{ "task_id": "uuid", "index_type": "embedding"|"pageindex" }`。
+
+### POST `.../documents/{id}/pageindex/rebuild`
+手动触发 PageIndex 树索引重建（异步）。仅对 `index_type=pageindex` 的文档有效，否则 400 提示改用「重建索引」。**Response 200**: `{ "task_id": "uuid" }`。
 
 ### DELETE `.../documents/{id}`
 删除文档（级联清理 chunk + ES + MinIO）。**Response 200**: `{}`。
@@ -195,11 +203,13 @@
 ```json
 {
   "query": "如何配置 RAG 的 top_k 参数",
-  "mode": "hybrid",      // hybrid | vector | keyword
+  "mode": "hybrid",      // hybrid | vector | keyword | pageindex
   "top_k": 10,
   "filters": { "file_type": "md" }   // 可选
 }
 ```
+- `mode=pageindex`：跳过 embedding，走 PageIndex 树索引 LLM 推理检索（仅对 `index_type=pageindex` 且已建树的文档生效）；
+  KB 下无此类文档时返回 `items=[]` + `message` 提示（不静默回退 ES）。
 **Response 200**
 ```json
 {
@@ -213,12 +223,13 @@
         "chunk_index": 3,
         "content": "...",
         "score": 0.87,
-        "match_type": "hybrid",   // vector | keyword | hybrid
+        "match_type": "hybrid",   // vector | keyword | hybrid | pageindex
         "metadata": { "page": 5 }
       }
     ],
     "total": 25,
-    "took_ms": 42
+    "took_ms": 42,
+    "message": "（仅 mode=pageindex 且无 pageindex 索引文档时返回提示）"
   }
 }
 ```
@@ -239,9 +250,13 @@
     { "role": "assistant", "content": "..." }
   ],
   "top_n": 5,
-  "system_prompt": "你是一个知识库助手"   // 可选
+  "system_prompt": "你是一个知识库助手",   // 可选
+  "retrieval_mode": "hybrid"              // 可选：hybrid | vector | keyword | pageindex（默认 hybrid）
 }
 ```
+- `retrieval_mode=pageindex`：走 PageIndex 树索引 LLM 推理检索（跳过 embedding/ES）；
+  KB 下无 pageindex 索引文档时返回 `error` 事件提示（不静默回退、不空答）。
+  其他取值走现有 ES 混合检索路径，行为不变。
 
 **SSE 事件流**（每个 `data:` 是一行 JSON，`event` 标注类型）:
 ```
