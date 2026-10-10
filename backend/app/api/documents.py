@@ -1,0 +1,230 @@
+"""文档路由 /knowledge-bases/{kb_id}/documents"""
+import uuid
+import io
+
+from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
+from uuid import UUID
+
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.responses import ok, not_found, param_error
+from app.schemas import schemas
+from app.models import *
+from app.api.deps import get_current_user, require_kb_access
+from app.workers.tasks import parse_document_task, cleanup_document_task
+from app.utils.doc_parser import detect_file_type
+from app.utils.minio_client import minio_client
+from app.utils.es_client import es_client
+
+router = APIRouter(tags=["文档管理"])
+
+MAX_SIZE = settings.rag_max_file_size_mb * 1024 * 1024
+
+
+@router.get("/knowledge-bases/{kb_id}/documents")
+def list_docs(kb_id: UUID,
+              page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+              status: str | None = None, keyword: str | None = None,
+              db: Session = Depends(get_db),
+              user: User = Depends(get_current_user)):
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb)
+    q = db.query(Document).filter(
+        Document.kb_id == kb_id, Document.is_deleted.is_(False))
+    if status:
+        q = q.filter(Document.status == status)
+    if keyword:
+        q = q.filter(Document.filename.ilike(f"%{keyword}%"))
+    total = q.count()
+    items = q.order_by(Document.uploaded_at.desc()) \
+        .offset((page - 1) * page_size).limit(page_size).all()
+    return ok({
+        "items": [schemas.DocOut.model_validate(d) for d in items],
+        "total": total, "page": page, "page_size": page_size,
+    })
+
+
+@router.post("/knowledge-bases/{kb_id}/documents")
+async def upload_doc(kb_id: UUID,
+                     file: UploadFile = File(...),
+                     db: Session = Depends(get_db),
+                     user: User = Depends(get_current_user)):
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb, min_role="editor")
+
+    # 文件类型
+    ftype = detect_file_type(file.filename or "")
+    if not ftype or ftype == "xls":
+        if ftype == "xls":
+            raise param_error("不支持 .xls 格式，请另存为 .xlsx 后重新上传")
+        raise param_error(f"不支持的文件类型: {file.filename}")
+
+    # 读取内容
+    data = await file.read()
+    # 按类型大小上限校验
+    max_mb = settings.max_file_size_mb(ftype)
+    if len(data) > max_mb * 1024 * 1024:
+        raise param_error(f"文件过大（{ftype} 上限 {max_mb}MB）")
+
+    # 存 MinIO
+    doc_id = str(uuid.uuid4())
+    minio_key = f"kb/{kb_id}/doc/{doc_id}.{ftype}"
+    minio_client.put_object(minio_key, data, content_type=file.content_type or "application/octet-stream")
+
+    # 建 document
+    doc = Document(
+        kb_id=kb_id, uploaded_by=user.id,
+        filename=file.filename or "unnamed", file_type=ftype,
+        file_size=len(data), minio_key=minio_key, status="uploaded",
+    )
+    db.add(doc)
+    db.flush()  # 生成 doc.id
+    # 建 task 记录
+    task = ProcessTask(document_id=doc.id, task_type="parse", status="pending")
+    db.add(task)
+    db.commit()
+    db.refresh(doc)
+    db.refresh(task)
+
+    # 入队解析
+    from loguru import logger as _log
+    try:
+        async_res = parse_document_task.delay(str(doc.id), str(task.id))
+        _log.info(f"[upload] task published: doc={doc.id} task={task.id} celery_id={async_res.id}")
+    except Exception as e:
+        _log.error(f"[upload] task publish FAILED: doc={doc_id} err={e}")
+        raise
+
+    return ok(schemas.DocUploadOut(document_id=doc.id, status=doc.status, task_id=task.id))
+
+
+@router.get("/knowledge-bases/{kb_id}/documents/{doc_id}")
+def get_doc(kb_id: UUID, doc_id: UUID,
+            db: Session = Depends(get_db),
+            user: User = Depends(get_current_user)):
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb)
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).first()
+    if not doc:
+        raise not_found("文档不存在")
+    task = db.query(ProcessTask).filter(
+        ProcessTask.document_id == doc_id
+    ).order_by(ProcessTask.created_at.desc()).first()
+    return ok(schemas.DocDetailOut(
+        document=schemas.DocOut.model_validate(doc),
+        task=schemas.ProcessTaskOut.model_validate(task) if task else None,
+    ))
+
+
+@router.get("/knowledge-bases/{kb_id}/documents/{doc_id}/download")
+def download_doc(kb_id: UUID, doc_id: UUID,
+                 db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)):
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb)
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).first()
+    if not doc:
+        raise not_found("文档不存在")
+    data = minio_client.get_object(doc.minio_key)
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f"attachment; filename={doc.filename}"},
+    )
+
+
+@router.get("/knowledge-bases/{kb_id}/documents/{doc_id}/content")
+def get_doc_content(kb_id: UUID, doc_id: UUID,
+                    db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    """查看文档原文内容（解析后的纯文本）"""
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb)
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).first()
+    if not doc:
+        raise not_found("文档不存在")
+    if not doc.full_text:
+        raise param_error("文档尚未解析完成，暂无原文内容")
+    return ok({
+        "filename": doc.filename,
+        "file_type": doc.file_type,
+        "content": doc.full_text,
+        "chunk_count": doc.chunk_count,
+        "meta": doc.meta or {},
+    })
+
+
+@router.get("/knowledge-bases/{kb_id}/documents/{doc_id}/chunks")
+def list_chunks(kb_id: UUID, doc_id: UUID,
+                page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+                db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb)
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id).first()
+    if not doc:
+        raise not_found("文档不存在")
+    q = db.query(Chunk).filter(Chunk.document_id == doc_id)
+    total = q.count()
+    items = q.order_by(Chunk.chunk_index) \
+        .offset((page - 1) * page_size).limit(page_size).all()
+    return ok({
+        "items": [schemas.ChunkOut.model_validate(c) for c in items],
+        "total": total, "page": page, "page_size": page_size,
+    })
+
+
+@router.post("/knowledge-bases/{kb_id}/documents/{doc_id}/reparse")
+def reparse_doc(kb_id: UUID, doc_id: UUID,
+                db: Session = Depends(get_db),
+                user: User = Depends(get_current_user)):
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb, min_role="editor")
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).first()
+    if not doc:
+        raise not_found("文档不存在")
+    # 重置状态
+    doc.status = "uploaded"
+    doc.chunk_count = 0
+    doc.error_message = None
+    doc.version += 1
+    task = ProcessTask(document_id=doc_id, task_type="parse", status="pending")
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    parse_document_task.delay(str(doc_id), str(task.id))
+    return ok({"task_id": task.id})
+
+
+@router.delete("/knowledge-bases/{kb_id}/documents/{doc_id}")
+def delete_doc(kb_id: UUID, doc_id: UUID,
+               db: Session = Depends(get_db),
+               user: User = Depends(get_current_user)):
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb, min_role="editor")
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).first()
+    if not doc:
+        raise not_found("文档不存在")
+    doc.is_deleted = True
+    db.commit()
+    # 异步清理 ES + MinIO
+    cleanup_document_task.delay(str(doc_id), doc.minio_key, str(kb_id))
+    return ok({})
