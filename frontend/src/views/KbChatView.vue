@@ -38,7 +38,7 @@
               <div class="msg-sources" v-if="msg.sources && msg.sources.length">
                 <span class="sources-label">参考来源:</span>
                 <el-tag v-for="(src, si) in msg.sources" :key="si" size="small" class="source-tag">
-                  {{ (src as any).filename || `片段 ${si + 1}` }}
+                  {{ (src as any).filename || `片段 ${(si as number) + 1}` }}
                 </el-tag>
               </div>
             </div>

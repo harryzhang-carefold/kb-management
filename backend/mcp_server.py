@@ -14,6 +14,7 @@ kb-management MCP Server — 将知识库检索相关接口暴露为 MCP 工具�
   6. get_document_chunks   — 查看文档分块列表
 """
 import json
+import re
 import sys
 import uuid
 from typing import Optional
@@ -30,6 +31,7 @@ from mcp.server.mcpserver import MCPServer
 
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.security import create_view_token
 from app.models import KnowledgeBase, KbMember, Document, Chunk, User
 from app.utils.es_client import es_client
 from app.utils.ai_client import embedding_client
@@ -81,6 +83,88 @@ def _kb_to_dict(kb: KnowledgeBase, db, include_counts: bool = True) -> dict:
         data["chunk_count"] = db.query(Chunk).filter(
             Chunk.kb_id == kb.id).count()
     return data
+
+
+def _docs_mapping(doc_ids: list) -> dict:
+    """批量查文档：doc_id → {kb_id, index_type, file_type}（citation 拼装用）。"""
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(Document)
+            .filter(Document.id.in_([uuid.UUID(d) for d in doc_ids]),
+                    Document.is_deleted.is_(False))
+            .all()
+        )
+        return {
+            str(d.id): {"kb_id": str(d.kb_id),
+                        "index_type": (d.meta or {}).get("index_type", "embedding"),
+                        "file_type": d.file_type}
+            for d in rows
+        }
+    finally:
+        db.close()
+
+
+def _attach_citations(kb_id: Optional[str], items: list) -> list:
+    """V2 §2.1 契约：为检索结果项补 doc_url + location（集中签发 view_token）。
+
+    - doc_url = {KB_PUBLIC_BASE_URL}/kb/{doc_kb_id}/doc/{doc_id}?{定位参数}&token=<view_token>
+      view_token 用 create_view_token(doc_id, kb_id, viewer="mcp") 签发，
+      同一 (kb_id, doc_id) 同批内复用（减少重复签发）。
+    - location: pageindex 文档 → {type:"node", value:node_id}（metadata 缺 node_id 时
+      降级 chunk）；embedding 文档 → {type:"chunk", value:chunk_index}。
+      pageindex 的 metadata（node_id/node_title/char_start/char_end）保留在 item 里透出。
+    - kb_id 可为 None（跨库检索）：每条 item 的文档 kb 以 DB 查询结果为准，
+      查不到才退回传入的 kb_id。
+    """
+    doc_ids = []
+    for it in items:
+        did = it.get("document_id")
+        if did and did not in doc_ids:
+            try:
+                uuid.UUID(did)
+            except (ValueError, TypeError):
+                continue  # 非法 doc_id：只跳过 doc_url 拼装，不整批失败
+            doc_ids.append(did)
+    if not doc_ids:
+        return items
+
+    docs = _docs_mapping(doc_ids)
+    base = (settings.kb_public_base_url or "").rstrip("/")
+    token_cache: dict = {}
+
+    def _token(doc_key: tuple) -> str:
+        if doc_key not in token_cache:
+            token_cache[doc_key] = create_view_token(
+                doc_key[1], doc_key[0], viewer="mcp")
+        return token_cache[doc_key]
+
+    for it in items:
+        did = it.get("document_id")
+        meta = it.get("metadata") or {}
+        info = docs.get(did, {})
+        doc_kb = info.get("kb_id", kb_id)
+        mt = it.get("match_type") or ""
+        is_pi = (mt == "pageindex") or info.get("index_type") == "pageindex"
+        if is_pi:
+            node_id = meta.get("node_id")
+            if node_id:
+                loc = {"type": "node", "value": node_id}
+                loc_param = f"node={node_id}"
+            else:
+                # 降级：锚点不精确，前端按 chunk 渲染
+                loc = {"type": "chunk", "value": it.get("chunk_index", 0)}
+                loc_param = f"chunk={it.get('chunk_index', 0)}"
+        else:
+            loc = {"type": "chunk", "value": it.get("chunk_index", 0)}
+            loc_param = f"chunk={it.get('chunk_index', 0)}"
+        it["location"] = loc
+        if doc_kb and did:
+            it["doc_url"] = (
+                f"{base}/kb/{doc_kb}/doc/{did}?{loc_param}"
+                f"&token={_token((doc_kb, did))}"
+            )
+    return items
 
 
 # ============================================================
@@ -266,6 +350,11 @@ def search_knowledge(
         for h in all_hits
     ]
 
+    # 引用契约（V2 §2.1）：doc_url + location。
+    # 必须在 items 组装**之后**调用——attach 是原地给 dict 加键，若先 attach 原始 hits
+    # 再重建 items 字段白名单，doc_url/location 会被丢弃（前次实现即此 bug）。
+    items = _attach_citations(None, items)
+
     return json.dumps({
         "query": query,
         "mode": mode,
@@ -338,6 +427,9 @@ def rag_query(
 
     if error_msg:
         return json.dumps({"error": error_msg}, ensure_ascii=False)
+
+    # 引用契约（V2 §2.1）：sources 补 doc_url + location
+    sources = _attach_citations(str(kb.id), sources)
 
     return json.dumps({
         "question": question,
@@ -444,6 +536,7 @@ def get_document_chunks(
         items = [
             {
                 "id": str(c.id),
+                "document_id": str(doc.id),
                 "chunk_index": c.chunk_index,
                 "content": c.content,
                 "token_count": c.token_count,
@@ -451,6 +544,8 @@ def get_document_chunks(
             }
             for c in chunks
         ]
+        # 引用契约（V2 §2.1）：chunks 项同样补 doc_url + location
+        items = _attach_citations(str(doc.kb_id), items)
 
         return json.dumps({
             "document_id": str(doc.id),
@@ -479,8 +574,89 @@ if __name__ == "__main__":
     )
 
 
-# 供 uvicorn 直接加载的 Starlette app
-streamable_app = mcp.streamable_http_app(
+# ============================================================
+# MCP Bearer 鉴权中间件（V2 §6.2 必改项）
+# ============================================================
+
+def _is_jwt_shape(token: str) -> bool:
+    """三段式 JWT 形态（仅格式校验，不跨系统验签——9100 不暴露公网兜底）。
+
+    ⚠️ 风险预案：agent 开了 forwardCallerAuthorization，可能用用户 JWT 覆盖
+    Authorization 头。中间件"双接受"：匹配 KB_MCP_API_KEY 放行；或合法三段式
+    JWT 形态放行（B 块注册后跑真实对话验证 agent 实际发什么头，再定最终策略）。
+    """
+    parts = token.split(".")
+    if len(parts) != 3:
+        return False
+    b64url = re.compile(r"^[A-Za-z0-9_-]+={0,2}$")
+    return all(b64url.match(p) for p in parts)
+
+
+def _mcp_auth_middleware(app):
+    """MCP Bearer 鉴权中间件工厂（参照 carefold-saas mcp_server.py 先例）。
+
+    校验 Authorization: Bearer <KB_MCP_API_KEY>（或三段式 JWT 形态）。
+    key 未配置时放行（本地开发）；配置后无/错 key → 401。
+    """
+
+    async def middleware(scope, receive, send):
+        if scope["type"] != "http" or not settings.kb_mcp_api_key:
+            await app(scope, receive, send)
+            return
+        auth = ""
+        for k, v in scope.get("headers", []):
+            if k.lower() == b"authorization":
+                auth = v.decode("latin-1")
+                break
+        token = auth[len("Bearer "):].strip() if auth.startswith("Bearer ") else ""
+        if not (token == settings.kb_mcp_api_key or _is_jwt_shape(token)):
+            body = b'{"error":"unauthorized"}'
+            await send({"type": "http.response.start", "status": 401,
+                        "headers": [(b"content-type", b"application/json"),
+                                    (b"content-length", str(len(body)).encode())]})
+            await send({"type": "http.response.body", "body": body})
+            return
+        await app(scope, receive, send)
+
+    return middleware
+
+
+# 供 uvicorn 直接加载的 Starlette app（streamable_http_app 已返回带路由的 Starlette，
+# 参照 carefold-saas build_mcp_app() 先例：外层再包一层带鉴权中间件的 app）
+#
+# ⚠️ A4 常驻化必须显式传 transport_security：mcp 2.3.0 的 StreamableHTTP 对
+# 非 loopback host（0.0.0.0）默认启用 DNS rebinding 保护且 allowed_hosts 为空
+# → 任何非本机 Host 头（如 agent 容器 172.19.0.1:9100）一律 421 Invalid Host。
+# 这里放行内网已知调用方（本机 + carefold-agent 网桥网关），Bearer 鉴权仍是
+# 唯一访问门禁（见 §6.2 / DEPLOY 文档 §9100 风险说明）。
+from mcp.server.transport_security import TransportSecuritySettings  # noqa: E402
+
+_mcp_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=[
+        "127.0.0.1:9100",
+        "localhost:9100",
+        "172.19.0.1:9100",  # carefold-agent docker 网桥网关（agent 容器经此访问）
+    ],
+)
+
+_mcp_app = mcp.streamable_http_app(
     streamable_http_path="/mcp",
     stateless_http=True,
+    transport_security=_mcp_security,
 )
+
+try:
+    from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    # ⚠️ 必须把内层 app 的 lifespan（StreamableHTTPSessionManager.run）透传给外层 app：
+    # 外层 Starlette 只继承 routes 时 lifespan 丢失 → session manager 的 task group
+    # 永不启动 → 任何请求 500 "Task group not initialized"。
+    streamable_app = Starlette(
+        routes=_mcp_app.routes,
+        middleware=[Middleware(_mcp_auth_middleware)],
+        lifespan=_mcp_app.router.lifespan_context,
+    )
+except ImportError:  # 极端环境缺 starlette 时退回裸 app（保持可启动）
+    logger.warning("starlette 不可用，MCP 鉴权中间件未挂载")
+    streamable_app = _mcp_app

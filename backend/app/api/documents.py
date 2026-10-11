@@ -12,7 +12,7 @@ from app.core.database import get_db
 from app.core.responses import ok, not_found, param_error
 from app.schemas import schemas
 from app.models import *
-from app.api.deps import get_current_user, require_kb_access
+from app.api.deps import get_current_user, get_current_user_or_view_token, require_kb_access, ViewTokenContext
 from app.workers.tasks import parse_document_task, cleanup_document_task
 from app.utils.doc_parser import detect_file_type
 from app.utils.minio_client import minio_client
@@ -21,6 +21,25 @@ from app.utils.es_client import es_client
 router = APIRouter(tags=["文档管理"])
 
 MAX_SIZE = settings.rag_max_file_size_mb * 1024 * 1024
+
+# file_type → MIME 映射（download 端点 inline 渲染用，V2 §1 错误3）
+_DOWNLOAD_MIME = {
+    "pdf": "application/pdf",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "bmp": "image/bmp",
+    "webp": "image/webp",
+    "tiff": "image/tiff",
+    "svg": "image/svg+xml",
+    "txt": "text/plain; charset=utf-8",
+    "md": "text/markdown; charset=utf-8",
+    "html": "text/html; charset=utf-8",
+}
+
+
+def _download_mime(file_type: str) -> str:
+    return _DOWNLOAD_MIME.get((file_type or "").lower(), "application/octet-stream")
 
 
 @router.get("/knowledge-bases/{kb_id}/documents")
@@ -116,7 +135,7 @@ async def upload_doc(kb_id: UUID,
 @router.get("/knowledge-bases/{kb_id}/documents/{doc_id}")
 def get_doc(kb_id: UUID, doc_id: UUID,
             db: Session = Depends(get_db),
-            user: User = Depends(get_current_user)):
+            user: User | ViewTokenContext = Depends(get_current_user_or_view_token)):
     kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
     if not kb:
         raise not_found("知识库不存在")
@@ -136,7 +155,7 @@ def get_doc(kb_id: UUID, doc_id: UUID,
 @router.get("/knowledge-bases/{kb_id}/documents/{doc_id}/download")
 def download_doc(kb_id: UUID, doc_id: UUID,
                  db: Session = Depends(get_db),
-                 user: User = Depends(get_current_user)):
+                 user: User | ViewTokenContext = Depends(get_current_user_or_view_token)):
     kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
     if not kb:
         raise not_found("知识库不存在")
@@ -145,17 +164,18 @@ def download_doc(kb_id: UUID, doc_id: UUID,
     if not doc:
         raise not_found("文档不存在")
     data = minio_client.get_object(doc.minio_key)
+    # inline + 按 file_type 映射 MIME（供 iframe 渲染，V2 §1 错误3）
     return StreamingResponse(
         io.BytesIO(data),
-        media_type="application/octet-stream",
-        headers={"Content-Disposition": f"attachment; filename={doc.filename}"},
+        media_type=_download_mime(doc.file_type),
+        headers={"Content-Disposition": f"inline; filename={doc.filename}"},
     )
 
 
 @router.get("/knowledge-bases/{kb_id}/documents/{doc_id}/content")
 def get_doc_content(kb_id: UUID, doc_id: UUID,
                     db: Session = Depends(get_db),
-                    user: User = Depends(get_current_user)):
+                    user: User | ViewTokenContext = Depends(get_current_user_or_view_token)):
     """查看文档原文内容（解析后的纯文本）"""
     kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
     if not kb:
@@ -179,7 +199,7 @@ def get_doc_content(kb_id: UUID, doc_id: UUID,
 def list_chunks(kb_id: UUID, doc_id: UUID,
                 page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
                 db: Session = Depends(get_db),
-                user: User = Depends(get_current_user)):
+                user: User | ViewTokenContext = Depends(get_current_user_or_view_token)):
     kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
     if not kb:
         raise not_found("知识库不存在")
@@ -192,7 +212,19 @@ def list_chunks(kb_id: UUID, doc_id: UUID,
     items = q.order_by(Chunk.chunk_index) \
         .offset((page - 1) * page_size).limit(page_size).all()
     return ok({
-        "items": [schemas.ChunkOut.model_validate(c) for c in items],
+        "items": [
+            schemas.ChunkOut(
+                id=c.id,
+                document_id=c.document_id,
+                kb_id=c.kb_id,
+                chunk_index=c.chunk_index,
+                content=c.content,
+                token_count=c.token_count,
+                # 防御：metadata 列可能反序列化为非 dict（如 SQLAlchemy MetaData 对象）
+                metadata=c.metadata if isinstance(c.metadata, dict) else {},
+                created_at=c.created_at,
+            ) for c in items
+        ],
         "total": total, "page": page, "page_size": page_size,
     })
 

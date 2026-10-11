@@ -49,3 +49,34 @@ def decode_token(token: str, expected_type: str) -> Optional[str]:
         return payload.get("sub")
     except JWTError:
         return None
+
+
+def create_view_token(doc_id: str, kb_id: str, viewer: str, minutes: int = None) -> str:
+    """签发文档只读 view_token（无状态 JWT，复用 SECRET_KEY，无撤销表）。
+
+    claims: sub=<doc_id>, kb_id, type="view", scope="single_doc", viewer, exp=now+minutes。
+    minutes 缺省用 settings.kb_view_token_minutes（env KB_VIEW_TOKEN_MINUTES，默认 15）。
+    """
+    minutes = minutes or settings.kb_view_token_minutes
+    expire = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    payload = {
+        "sub": str(doc_id),
+        "kb_id": str(kb_id),
+        "type": "view",
+        "scope": "single_doc",
+        "viewer": viewer,
+        "exp": expire,
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
+
+
+def decode_view_token(token: str) -> Optional[dict]:
+    """解码并校验 view_token：type=="view" 且未过期，返回完整 payload；否则 None。"""
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        if payload.get("type") != "view":
+            return None
+        return payload
+    except JWTError:
+        return None

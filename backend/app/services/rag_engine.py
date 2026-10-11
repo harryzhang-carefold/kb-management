@@ -107,6 +107,9 @@ class RAGEngine:
             "filename": s["filename"],
             "chunk_index": s["chunk_index"],
             "score": s.get("score", 0.0),
+            # V2 §1 错误1：透传 metadata（pageindex 命中含 node_id/char_start/char_end；
+            # embedding 命中无该键 → 空 dict，无影响）
+            "metadata": s.get("metadata", {}),
         } for s in sources]
 
         yield {"type": "meta", "sources": source_meta, "took_ms": took_ms}

@@ -101,6 +101,11 @@ class Settings(BaseSettings):
     pageindex_build_timeout: int = 300    # 建树单次 LLM 调用超时（秒）
     pageindex_retrieve_timeout: int = 60  # 检索推理单次 LLM 调用超时（秒）
 
+    # ---- 知识库引用（kb citations, V2）----
+    kb_view_token_minutes: int = 15          # view_token 有效期（分钟）
+    kb_public_base_url: str = "https://agent.carefold.ai/kb-management"  # doc_url 绝对 URL 基址
+    kb_mcp_api_key: Optional[str] = None     # MCP 9100 Bearer 密钥（.env 注入，不进 git）
+
     # ---- RAG 参数 ----
     rag_top_k: int = 10
     rag_top_n: int = 5

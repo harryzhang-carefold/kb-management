@@ -7,10 +7,17 @@ const api = axios.create({
   timeout: 30000
 })
 
-// Request interceptor: attach JWT
+// 深链只读模式：DocView 在发起请求前设置；此模式下用 ?token=（view_token）
+// 而非 localStorage JWT 鉴权，且 401 不跳登录、只提示（token 过期/无效）。
+;(window as any).__kbTokenMode = ''
+
+// Request interceptor: attach JWT（token 模式下改用 ?token= query 传 view_token）
 api.interceptors.request.use((config) => {
   const store = useUserStore()
-  if (store.token) {
+  const viewToken = (window as any).__kbTokenMode || ''
+  if (viewToken) {
+    config.params = { ...(config.params || {}), token: viewToken }
+  } else if (store.token) {
     config.headers.Authorization = `Bearer ${store.token}`
   }
   return config
@@ -28,9 +35,12 @@ api.interceptors.response.use(
   },
   (err) => {
     if (err.response?.status === 401) {
-      const store = useUserStore()
-      store.logout()
-      window.location.href = '/kb-management/login'
+      // token 模式（深链只读）：不跳登录，仅提示 token 无效/过期
+      if (!(window as any).__kbTokenMode) {
+        const store = useUserStore()
+        store.logout()
+        window.location.href = '/kb-management/login'
+      }
     }
     const msg = err.response?.data?.message || err.message || '网络错误'
     ElMessage.error(msg)
