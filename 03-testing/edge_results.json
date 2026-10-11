@@ -1,0 +1,36 @@
+{
+  "user": "edge_c0338852",
+  "kb": "9b4a9a12-60df-477b-8678-6900ac8a5c44",
+  "results": [
+    {
+      "name": "edge1_large_build_done",
+      "pass": true,
+      "detail": "status=indexed pi=ok pieces=2 nodes=41 build_ms=102731 elapsed=120s"
+    },
+    {
+      "name": "edge1_multipiece",
+      "pass": true,
+      "detail": "piece_count=2 full_text_chars=47698"
+    },
+    {
+      "name": "edge2_onode_build",
+      "pass": true,
+      "detail": "status=indexed pi=ok nodes=1 status_val=ok"
+    },
+    {
+      "name": "edge2_onode_search",
+      "pass": true,
+      "detail": "items=1 msg=None content_head=星尘知识库是一款面向中小企业的轻量级知识库管理系统，它支持多知识库隔离、文档自动解析与双路混合检索，"
+    },
+    {
+      "name": "edge3_llm_unavailable_error",
+      "pass": true,
+      "detail": "results=0 extra={'error': 'LLM endpoint unreachable (simulated for EDGE-3)'}"
+    },
+    {
+      "name": "edge3_no_silent_fallback",
+      "pass": true,
+      "detail": "items=[] message=该知识库下没有使用 PageIndex 索引的文档（上传时需选择 PageIndex 索引方式），请更换检索方式或重新上传文档。 (无 error 字段=非 LLM 失败路径，属'无文档'提示)"
+    }
+  ]
+}

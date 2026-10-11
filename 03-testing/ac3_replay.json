@@ -1,0 +1,19 @@
+{
+  "answer": "队列积压超过 **200 条** 时会触发 **P2 级告警** [1]。",
+  "sources": [
+    {
+      "chunk_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "document_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "filename": "ops_manual.md",
+      "chunk_index": 0,
+      "score": 0.98
+    },
+    {
+      "chunk_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "document_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "filename": "ops_manual.md",
+      "chunk_index": 0,
+      "score": 0.65
+    }
+  ]
+}

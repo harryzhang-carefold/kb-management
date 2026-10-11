@@ -90,3 +90,53 @@ cd backend && .venv/bin/celery -A app.workers.celery_app.celery_app worker -Q kb
 - 改动前端：`api/index.ts`（uploadDoc index_type / reindexDoc / search mode / chatStream retrieval_mode + SSE 协议兼容）、`KbDetailView.vue`（上传 radio + 列 + 重建按钮）、`KbChatView.vue`（检索模式 radio）、`KbSearchView.vue`（mode radio + 提示）
 - 文档：`docs/api.md`、`docs/architecture.md`（PageIndex 引擎章节）
 - 不动：ES/向量检索路径、requirements.txt（自实现无新依赖）、外部容器
+
+## 7. nginx 部署（t_461dbaba）— agent.carefold.ai/kb-management/
+
+**目标**：`https://agent.carefold.ai/kb-management/` 可访问，静态 dist + API 反代宿主机后端（127.0.0.1:9012）。
+
+**构建**：`feat/pageindex` 分支 `frontend/` 执行 vite build，产物 `dist/`（base 已是 `/kb-management/`）。
+- 注：`npm run build`（含 `vue-tsc -b`）因**既有已提交代码**的类型错误 `KbChatView.vue:41`（`si` 为 `string|number` 不能 `+ 1`）失败；红线要求不动前端源码，故直接用 `vite build` 出包（vite 不做类型检查，dist 产物与 tsc 无关）。该类型错误留给后续开发任务修复。
+
+**dist 挂载**：产物复制到 `02-development/deploy/dist/`，在 `~/myapp/docker-compose.yml` 的 nginx 服务新增一条 ro 卷（与 carefold-base/saas 同模式），`docker compose up --detach nginx` 重建 nginx-test 容器生效。
+```
+- /home/harry.zhang/kb-management/02-development/deploy/dist:/usr/share/nginx/kb-management:ro
+```
+
+**nginx 配置**（`/etc/nginx/conf.d/agent.carefold.ai-100-https.conf` 443 server 块，仅新增，未动 carefold-base/saas 段）：
+```nginx
+# 反代：前端 /kb-management/api/ → 后端 /api/（静态 proxy_pass 尾斜杠自动去 /kb-management 前缀，
+# 与 vite dev proxy rewrite 逻辑一致）；后端在宿主机 9012，容器经 bridge IP 172.18.0.1 访问（已实测通）。
+location /kb-management/api/ {
+    proxy_pass http://172.18.0.1:9012/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+    proxy_buffering off;        # SSE chat 流式逐字必需
+    proxy_cache off;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+}
+# SPA 静态 + 深链 fallback
+location /kb-management/ {
+    try_files $uri $uri/ /kb-management/index.html;
+}
+location = /kb-management {
+    return 301 /kb-management/;
+}
+```
+
+**验证证据（2026-10-10 10:50 UTC，全部经公网域名实测）**：
+- `nginx -t`：configuration test is successful（容器内校验）
+- `curl -sI https://agent.carefold.ai/kb-management/` → **HTTP 200**，`content-type: text/html`，body 即 index.html（asset 路径带 `/kb-management/` 前缀正确）
+- `curl -sI https://agent.carefold.ai/kb-management`（无尾斜杠）→ **HTTP 301** → `/kb-management/`
+- SPA 深链 `GET /kb-management/kb/abc123/chat` → **200 text/html**（fallback 生效，客户端路由刷新不 404）
+- 静态资源 `GET /kb-management/assets/index-*.js` → **200 application/javascript**（861 KB）
+- 反代健康端点 `GET /kb-management/api/v1/health` → **200** `{"code":0,"message":"ok","data":{"status":"degraded","services":{...}}}`（degraded 系外部 embedding/mineru 端点不可达的环境态，见 §5）
+- 反代鉴权链路 `GET /kb-management/api/v1/knowledge-bases` → **401** `{"code":40101,"message":"缺少 Authorization 头"}`（请求确实到达后端 FastAPI 路由层，前缀剥离正确）
+- chat 流式端点 `POST /kb-management/api/v1/knowledge-bases/x/chat` → 401（未带 token），`proxy_buffering off` 已配置，SSE 逐字依赖满足（正式带 token 的 SSE 行为由测试阶段复验）
+
+**影响面**：仅 myapp compose 加一条卷 + 域名 conf 新增 3 个 location；carefold-base/saas 段零改动（diff 可证）；无密钥入库（dist 为纯静态构建产物）。

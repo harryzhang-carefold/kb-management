@@ -1,0 +1,89 @@
+{
+  "owner": "testpi_8de322f7",
+  "kb_pi": "e7213e59-eb81-4e2f-8760-07fd6778a93a",
+  "kb_edge": "ca3dedd7-6345-47f6-b02b-3ea522f6b189",
+  "results": [
+    {
+      "name": "ac1_doc_indexed",
+      "pass": false,
+      "detail": "status=None pi=None nodes=None chunks=None"
+    },
+    {
+      "name": "ac2_200",
+      "pass": true,
+      "detail": "http=200 code=0"
+    },
+    {
+      "name": "ac2_items_relevant",
+      "pass": true,
+      "detail": "n=3 first_doc=33010660-d339-48c5-9cf1-e86f56bfeab7 score=1.0 mt=pageindex head=d；其次检查文档的索引方式是否为该检索模式所要求；最后确认 ES 索引中是否存在对应 chunk 数据。\n\n### 3."
+    },
+    {
+      "name": "ac3_sse_200",
+      "pass": true,
+      "detail": "http=200 events=70"
+    },
+    {
+      "name": "ac3_streaming",
+      "pass": true,
+      "detail": "data_events=35"
+    },
+    {
+      "name": "ac3_sources",
+      "pass": true,
+      "detail": "n=2 keys=['chunk_id', 'document_id', 'filename', 'chunk_index', 'score']"
+    },
+    {
+      "name": "ac3_citation",
+      "pass": false,
+      "detail": "answer_head="
+    },
+    {
+      "name": "ac4_hybrid",
+      "pass": true,
+      "detail": "http=200 code=0 items=0"
+    },
+    {
+      "name": "ac4_vector",
+      "pass": true,
+      "detail": "http=200 code=0 items=0"
+    },
+    {
+      "name": "ac4_keyword",
+      "pass": true,
+      "detail": "http=200 code=0 items=0"
+    },
+    {
+      "name": "ac4_mode_validation_422",
+      "pass": true,
+      "detail": "http=422"
+    },
+    {
+      "name": "edge_search_empty_hint",
+      "pass": false,
+      "detail": "items=0 msg="
+    },
+    {
+      "name": "edge_chat_error_hint",
+      "pass": false,
+      "detail": "err_events=0 hint=None"
+    }
+  ],
+  "ac3_answer": "",
+  "ac3_sources": [
+    {
+      "chunk_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "document_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "filename": "ops_manual.md",
+      "chunk_index": 0,
+      "score": 0.98
+    },
+    {
+      "chunk_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "document_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "filename": "ops_manual.md",
+      "chunk_index": 0,
+      "score": 0.65
+    }
+  ]
+}

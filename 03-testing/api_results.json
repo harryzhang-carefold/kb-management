@@ -1,0 +1,126 @@
+{
+  "user": "testpi_8de322f7",
+  "kb": "e7213e59-eb81-4e2f-8760-07fd6778a93a",
+  "kb2": "ca3dedd7-6345-47f6-b02b-3ea522f6b189",
+  "doc_pi": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+  "doc_emb": "5ecf7217-7c21-40c5-823d-782c3092e0f9",
+  "results": [
+    {
+      "name": "setup_register_login",
+      "pass": true,
+      "detail": "user=testpi_8de322f7"
+    },
+    {
+      "name": "ac1_upload_pageindex",
+      "pass": true,
+      "detail": "kb=e7213e59-eb81-4e2f-8760-07fd6778a93a doc=33010660-d339-48c5-9cf1-e86f56bfeab7"
+    },
+    {
+      "name": "ac1_async_index_done",
+      "pass": true,
+      "detail": "status=indexed pageindex_status=degraded tree_nodes=13 build_ms=77410 elapsed=90s"
+    },
+    {
+      "name": "ac1_mutex_no_chunks",
+      "pass": true,
+      "detail": "chunk_count=0"
+    },
+    {
+      "name": "ac1_index_type_recorded",
+      "pass": true,
+      "detail": "index_type=pageindex"
+    },
+    {
+      "name": "setup_embedding_doc",
+      "pass": true,
+      "detail": "doc=5ecf7217-7c21-40c5-823d-782c3092e0f9 status=failed err=Connection error."
+    },
+    {
+      "name": "ac2_search_pageindex_200",
+      "pass": true,
+      "detail": "items=3 took_ms=3446"
+    },
+    {
+      "name": "ac2_items_relevant",
+      "pass": true,
+      "detail": "first_doc=33010660-d339-48c5-9cf1-e86f56bfeab7 score=1.0 content_head=### 3.2 模型服务不可用排查\n\n模型服务不可用时，先检查端点连通性与密钥有效性，再查看网关侧超时日志。确认服务恢复后重放一次请求验证。\n\n"
+    },
+    {
+      "name": "ac3_chat_sse_stream",
+      "pass": true,
+      "detail": "http=200 events=52 tokens_in_answer=33 err=None"
+    },
+    {
+      "name": "ac3_chat_sources",
+      "pass": true,
+      "detail": "n_sources=2 first_keys=['chunk_id', 'chunk_index', 'document_id', 'filename', 'score']"
+    },
+    {
+      "name": "ac3_citation_correct",
+      "pass": true,
+      "detail": "answer_head=队列积压超过 **200 条** 时会触发 P2 级告警 [1]。"
+    },
+    {
+      "name": "edge_no_pi_index_empty_hint",
+      "pass": true,
+      "detail": "items=[] message=该知识库下没有使用 PageIndex 索引的文档（上传时需选择 PageIndex 索引方式），请更换检索方式或重新上传文档。"
+    },
+    {
+      "name": "edge_no_pi_index_chat_hint",
+      "pass": true,
+      "detail": "events=3 hint_lines=['event: error', 'data: {\"message\": \"该知识库下没有使用 PageIndex 索引的文档（上传时需选择 PageIndex 索引方式），请更换检索方式或重新上传文档。\"}']"
+    },
+    {
+      "name": "reg1_hybrid",
+      "pass": true,
+      "detail": "http=200 items=0 msg=ok"
+    },
+    {
+      "name": "reg2_vector",
+      "pass": true,
+      "detail": "http=200 items=0 msg=ok"
+    },
+    {
+      "name": "reg3_keyword",
+      "pass": true,
+      "detail": "http=200 items=0 match_types=[]"
+    },
+    {
+      "name": "reg4_mode_validation",
+      "pass": true,
+      "detail": "http=422"
+    },
+    {
+      "name": "reindex_pageindex_dispatch",
+      "pass": true,
+      "detail": "index_type=pageindex"
+    },
+    {
+      "name": "reindex_pageindex_done",
+      "pass": true,
+      "detail": "status=indexed pi=ok tree_created=2026-10-10T09:16:22.534883Z"
+    },
+    {
+      "name": "rebuild_wrong_type_400",
+      "pass": true,
+      "detail": "http=400 msg=该文档不是 PageIndex 索引方式，请使用“重建索引”按文档索引方式执行"
+    }
+  ],
+  "sample_answer": "队列积压超过 **200 条** 时会触发 P2 级告警 [1]。",
+  "sample_sources": [
+    {
+      "chunk_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "document_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "filename": "ops_manual.md",
+      "chunk_index": 0,
+      "score": 0.98
+    },
+    {
+      "chunk_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "document_id": "33010660-d339-48c5-9cf1-e86f56bfeab7",
+      "filename": "ops_manual.md",
+      "chunk_index": 0,
+      "score": 0.65
+    }
+  ]
+}
