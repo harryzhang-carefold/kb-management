@@ -425,4 +425,7 @@ location: {"type": "chunk", "value": 1}        # embedding 文档
 6. 浏览器视觉验证（三态原文内嵌、chunk/node 高亮实际效果、token 过期提示条）留给测试 t_a52daf8a。
 
 ### 4. 提交
-本段将 A1-A5 全部未提交改动 + 自测脚本统一 commit 到 `feat/kb-citations` 并 push（排除 `.env`/`node_modules`/`tsconfig.tsbuildinfo`/`05-temp`/`deploy/dist`，`.env` 仅进本地）。commit hash 见 DEV_REPORT 末尾或 `git log`。
+本段将 A1-A5 全部未提交改动 + 自测脚本统一 commit 到 `feat/kb-citations` 并 push（排除 `.env`/`node_modules`/`tsconfig.tsbuildinfo`/`05-temp`/`deploy/dist`，`.env` 仅进本地）。
+- **主提交：`1d0980d`**（16 files，+1647/-25）：`feat: 文档引用元数据+深链定位+view_token+MCP 鉴权+9100 常驻`
+- 已 `git push origin feat/kb-citations`（远端新分支，PR 入口：https://github.com/harryzhang-carefold/kb-management/pull/new/feat/kb-citations）。
+- 不含 bug 修复 t_670a7d8a 的改动（其已单独提交 `edf8ca4`，本提交未触碰其文件）。
