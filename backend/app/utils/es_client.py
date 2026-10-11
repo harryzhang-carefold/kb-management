@@ -26,10 +26,45 @@ class ESClient:
             )
         return self._es
 
+    def _existing_dim(self) -> Optional[int]:
+        """读取现有索引 embedding 字段的 dims（不存在返回 None）。"""
+        try:
+            m = self.es.indices.get_mapping(index=self.index)
+            props = m.get(self.index, {}).get("mappings", {}).get("properties", {})
+            return (props.get("embedding") or {}).get("dims")
+        except Exception:
+            return None
+
     def ensure_index(self, embedding_dim: int = 3584):
-        """确保索引存在（幂等）。"""
+        """确保索引存在（幂等）。
+
+        维度不一致时（如外部 embedding 端点切换、维度变化）：
+        - 索引为空 → 删除后按新维度重建；
+        - 索引非空且维度不符 → 抛错，由调用方（启动/任务）降级为告警，不静默丢数据。
+        """
         if self.es.indices.exists(index=self.index):
-            return
+            dim = self._existing_dim()
+            if dim != embedding_dim:
+                try:
+                    cnt = self.es.count(index=self.index).get("count", 0)
+                except Exception:
+                    cnt = -1
+                if cnt == 0:
+                    logger.warning(f"ES index {self.index} dim {dim} != {embedding_dim} "
+                                   f"but empty → recreating")
+                    self.es.indices.delete(index=self.index)
+                    # 落到下方重建
+                elif cnt > 0:
+                    raise RuntimeError(
+                        f"ES index {self.index} dim {dim} != requested {embedding_dim} "
+                        f"and has {cnt} docs — refuse to recreate")
+                else:
+                    # cnt<0（count 查询失败）：保守起见不动索引
+                    return
+                if self.es.indices.exists(index=self.index):
+                    return
+            else:
+                return
         body = {
             "settings": {"number_of_shards": 1, "number_of_replicas": 0},
             "mappings": {

@@ -164,8 +164,10 @@ def chunk_index_task(self, document_id: str, task_id: str):
             ))
         db.commit()
 
-        # 写 ES
+        # 写 ES（索引维度以模型实测维度为准，端点切换时自动适配）
         from datetime import datetime
+        from app.utils.ai_client import embedding_client as _emb
+        real_dim = _emb.dim() or settings.embedding_dim
         es_chunks = [{
             "chunk_id": c["chunk_id"],
             "chunk_index": c["chunk_index"],
@@ -175,7 +177,7 @@ def chunk_index_task(self, document_id: str, task_id: str):
             "created_at": datetime.utcnow().isoformat(),
         } for i, c in enumerate(chunks)]
 
-        es_client.ensure_index(embedding_dim=settings.embedding_dim)
+        es_client.ensure_index(embedding_dim=real_dim)
         es_client.index_chunks(
             kb_id=str(doc.kb_id), document_id=document_id,
             file_name=doc.filename, file_type=doc.file_type,

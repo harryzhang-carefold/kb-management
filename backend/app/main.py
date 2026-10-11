@@ -22,8 +22,11 @@ async def lifespan(app: FastAPI):
     # 启动：确保 ES 索引 + MinIO bucket 存在
     try:
         from app.utils.es_client import es_client
-        es_client.ensure_index(embedding_dim=3584)
-        logger.info("ES index ready")
+        from app.utils.ai_client import embedding_client
+        # 索引维度以模型实测维度为准（端点切换/维度变化时自动适配）
+        dim = embedding_client.dim() or settings.embedding_dim
+        es_client.ensure_index(embedding_dim=dim)
+        logger.info(f"ES index ready (dim={dim})")
     except Exception as e:
         logger.warning(f"ES init skipped: {e}")
     try:

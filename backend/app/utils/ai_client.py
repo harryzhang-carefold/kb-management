@@ -13,6 +13,7 @@ class EmbeddingClient:
 
     def __init__(self):
         self._client: Optional[OpenAI] = None
+        self._dim: Optional[int] = None  # 实测向量维度（首次 embed 后缓存）
 
     @property
     def client(self) -> OpenAI:
@@ -40,8 +41,27 @@ class EmbeddingClient:
             )
             # 按 index 排序保证顺序
             resp.data.sort(key=lambda x: x.index)
-            results.extend([d.embedding for d in resp.data])
+            vecs = [d.embedding for d in resp.data]
+            if self._dim is None and vecs:
+                self._dim = len(vecs[0])
+            results.extend(vecs)
         return results
+
+    def dim(self) -> Optional[int]:
+        """实测向量维度：优先缓存，否则探测一次。
+
+        用于创建 ES 索引时以模型真实维度为准（替代写死的
+        settings.embedding_dim 默认值，避免端点切换/维度不一致）。
+        """
+        if self._dim is not None:
+            return self._dim
+        try:
+            v = self.embed_one("dim probe")
+            self._dim = len(v)
+            return self._dim
+        except Exception as e:
+            logger.warning(f"[embedding] dim probe failed: {e}")
+            return None
 
     def embed_one(self, text: str) -> list[float]:
         return self.embed([text])[0]
