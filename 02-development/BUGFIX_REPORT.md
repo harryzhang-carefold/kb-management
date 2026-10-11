@@ -101,6 +101,8 @@ DB 佐证（GINA KB，用户原始场景）：
 
 > 说明：pageindex 建树走 LLM（27b），单文档约 1–6 分钟（小文档 ~5–77s，视 LLM 输出），非本次 bug 范围。
 
+**run 60 复核（2026-10-11，backend 重启后重跑，结果一致）**：同库连续 3 份（embedding x2 + pageindex）全 `indexed`（3/4/树）；`GET /health` → `embedding=ok`；检索 `hybrid`/`keyword`/`vector` 均 HTTP 200（items 10/7/10）；单文档上传 `indexed`（3 chunks）。脚本：`05-temp/regression_v2.py`、`05-temp/single_doc_test.py`。
+
 ---
 
 ## 4. 部署（已起、已验证可运行）
