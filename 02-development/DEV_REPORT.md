@@ -578,3 +578,195 @@ kb-management 的 LLM 已从已下线的 vllm 切到 DeepSeek（`api.deepseek.co
 3. Celery 仍寄生在别的 agent 会话 scope（PID 3043762/3043869/3043870），该会话结束会被回收；本次未动（避免双 worker 抢队列），建议后续统一为 `kb-celery.service` 常驻单元。
 4. `mode=vector` 不再返回 `score=0` 的全库填充项 → 真命中不足 `top_k` 时条数会少于 `top_k`（此前是被他库 chunk 填满的假满足）。
 
+
+---
+
+## 上传默认索引方式 embedding → pageindex（t_7f451c5f，分支 feat/default-pageindex，2026-10-12）
+
+### 1. 改动（4 个文件）
+
+| 文件 | 改动 |
+|---|---|
+| `backend/app/api/documents.py` | `upload_doc` 的 `index_type: str = Form("embedding", pattern=...)` → **`Form("pageindex", ...)`**（+ docstring 默认值同步） |
+| `frontend/src/views/KbDetailView.vue` | `const indexType = ref<'embedding' \| 'pageindex'>('embedding')` → **`('pageindex')`**（+ 注释同步；22-31 行 radio 文案/说明是跟随选中态渲染的，无需改） |
+| `backend/app/services/pageindex_engine.py` | 新增 `BUILD_MAX_TOKENS=32768` / `RETRIEVE_MAX_TOKENS=8192` 两个输出预算常量；建树**解析失败也触发一次重试**（见 §2 缺陷 A/B） |
+| `tests/e2e_test.py` | 第 4 步上传**显式**传 `index_type="embedding"`（该套件 6/7 步断言的是 embedding/hybrid 链路，不能依赖默认值，见 §2） |
+
+**红线兜底逐条核对（**未改**，改动后 grep 复核仍在）：**
+```
+backend/app/workers/tasks.py:72      new_meta["index_type"] = old_meta.get("index_type", "embedding")
+backend/app/workers/tasks.py:119     if (doc.meta or {}).get("index_type") == "pageindex":   # 分流判断
+backend/app/api/documents.py:289     index_type = (doc.meta or {}).get("index_type", "embedding")
+backend/mcp_server.py:100            "index_type": (d.meta or {}).get("index_type", "embedding")
+frontend KbDetailView.vue:60-61,272  (row.meta?.index_type || 'embedding')
+```
+即：**新建上传默认 pageindex，历史无 `index_type` 的文档仍按 embedding 兜底**（含显示、重建索引、MCP 引用拼装）。
+
+### 2. 自测中暴露并修复的两个真实缺陷（pageindex 变成默认后必须修）
+
+**缺陷 A — 建树输出预算被推理吃满 → 静默降级成规则树（默认路径 20% 命中）**
+
+`deepseek-flash` 是推理型模型，`reasoning_content` 与 `content` **同源计入 `completion_tokens`**。
+建树固定 `max_tokens=8192` 时，模型思考可吃掉全部预算 → `content` 为空 → `_extract_json` 抛
+`LLM 输出不含 JSON 对象` → 上层降级为 heading 规则树（`pageindex_status=degraded`）。
+
+线上 worker 日志（修复前，默认上传一上传就命中）：
+```
+2026-10-12 02:53:36 [upload] task published: doc=dde3cabc-…（未传 index_type）
+2026-10-12 02:54:23 WARNING pageindex_engine:build_tree_index:502 -
+  [pageindex] LLM 建树失败（doc=dde3cabc-…）: LLM 输出不含 JSON 对象 → 降级 heading 规则树
+2026-10-12 02:54:25 INFO build_pageindex_task:279 - [pageindex_build] done … status=degraded
+```
+定量（`05-temp/t_7f451c5f_budget_probe.py`，同一 484 字文档、同一 prompt 真实调用）：
+```
+max_tokens=8192  n=5
+  trial1: finish=stop   completion=8134 content_len=1042 reasoning_len=18569 parse=OK
+  trial2: finish=length completion=8192 content_len=   0 reasoning_len=23932 parse=FAIL   ← 预算截断
+  → 4/5 parse OK（20% 降级）
+max_tokens=32768 n=3
+  trial0/1/2: finish=stop completion=5625/9750/8465 content_len=679/272/263 parse=OK
+  → 3/3 parse OK
+```
+修复：`max_tokens=32768` + **解析失败也走原来那条“带错误信息重试一次”**（原实现只在“结构校验失败”时重试，
+解析失败直接上抛降级）。
+
+**缺陷 B — 检索选节点输出预算 1024 同样可被推理吃满 → 空结果**
+
+`pageindex_retrieve` 固定 `max_tokens=1024`。实测 6 次检索调用中 1 次
+`completion=1024 / finish_reason=length / content 为空` → 解析失败 → 返回 0 条
+（`05-temp/t_7f451c5f_retrieve_matrix.py`，修复前）。这正是 t_3cdebd1f 交接里标记的“建议后续提到 2048”风险点，
+pageindex 成为默认后它会直接打在默认链路上，故本轮一并提到 `RETRIEVE_MAX_TOKENS=8192`（只抬上限，不改语义/返回结构）。
+
+> 说明：这两处是**同一类**缺陷（推理型模型的输出预算），不是本次 2 处默认值改动的语义变化；
+> 但它们决定“默认 pageindex 是否真的可用”，属本次交付的必要条件。
+
+### 3. 自测证据（5 项，全部真实调用，非构造数据）
+
+**证据 1 — 契约层：OpenAPI 默认值（`05-temp/t_7f451c5f_openapi.py`）**
+```
+file       {'type': 'string'}
+index_type {'type': 'string', 'pattern': '^(embedding|pageindex)$', 'default': 'pageindex'}
+required = ['file']       ← 不传 index_type 即 pageindex
+```
+
+**证据 2 — 不传 index_type 走 API 上传：meta.index_type=pageindex 且真实建树 ok（非降级）**
+（`05-temp/t_7f451c5f_selftest.py` → `_out3.txt`，7/7 PASS）
+```
+用例1 不传 index_type 上传 → http=200
+  poll: status=chunking(0~36s) → indexed(t=40s)，pageindex_status: building → ok
+  meta.index_type       = pageindex
+  meta.pageindex_status = ok          ← ok = LLM 真实建树（degraded 才是规则降级树）
+  tree.model            = deepseek-flash   tree.node_count = 6   build_ms = 37727
+用例2 pageindex 检索（'北极星项目采用了哪些核心组件？'）
+  total=2 took_ms=2148  → n1..3 '2. 核心组件' score=0.98（内容含原文片段）/ n1 score=0.72
+  多问法覆盖：核心组件/环境要求/验收口令/总负责人/验收口令 → 5/5 有命中
+用例3 RAG 流式问答 retrieval_mode=pageindex → events={meta:1,token:83,sources:1,done:1}，sources=1，答案 143 字带引用
+用例4 回归：显式 index_type=embedding → status=indexed chunk_count=1（pageindex_status 为空=不走树）
+       向量检索命中该文档（match=vector score=0.758）
+[RESULT] 7/7 PASS
+```
+
+**证据 3 — 建树稳定性（修复后连续 3 次默认上传，`05-temp/t_7f451c5f_stability.py`）**
+```
+run0: status=indexed pi=ok nodes=6 build_ms=41235 检索命中=1 总耗时=45.9s
+run1: status=indexed pi=ok nodes=2 build_ms=46592 检索命中=1 总耗时=51.1s
+run2: status=indexed pi=ok nodes=5 build_ms=44423 检索命中=1 总耗时=50.1s
+[RESULT] 3/3 建树 ok（非降级）；node_count 分布=[6,2,5]；检索命中=[1,1,1]
+```
+（修复前同一路径为 4/5 成功 + 1 次 degraded；修复后 3/3 ok，合计 4/4 默认上传均非降级。）
+
+**证据 4 — 线上 UI：默认选中 pageindex，且不碰 radio 直接上传就走 pageindex**
+（无密码自动化：本地签发 access_token 注入 `localStorage.kb_token` 后驱动真实浏览器，`05-temp/t_7f451c5f_ui_prep.py` + `ui_verify.py`）
+```
+DOM 实测（页面 https://agent.carefold.ai/kb-management/kb/21f3f148-…）：
+  radios: [{text:"Embedding（分块+向量）", active:false, inputChecked:false},
+           {text:"PageIndex（树索引）",  active:true,  inputChecked:true}]   ← 默认选中 pageindex
+  uploaded_desc: "无向量、基于层级树 + LLM 推理检索；上传后异步建树（约 30-120s），一个文档只建一种索引。"
+  → 该说明只在 indexType==='pageindex' 时渲染，作为第二重佐证
+
+CDP setFileInputFiles 上传 695B .md（未触碰 radio）→ 文档列表行为：
+  "t_7f451c5f_ui_doc.md  md  695 B  0  PageIndex  建树中  分块中 …"
+回读：status=indexed index_type=pageindex pageindex_status=ok node_count=2 build_ms=14317
+  pageindex 检索 '星尘知识库的验收口令是什么？' → total=2（n1..1 score=0.9 / n1 score=0.85，均含口令原文）
+  pageindex 问答 → sources=2，答案 "星尘知识库的验收口令是 **靛蓝-5824**。[1][2]"
+[RESULT] UI 默认链路端到端 PASS
+```
+
+**证据 5 — 回归 + LLM 依赖可用（`05-temp/t_7f451c5f_mode_mismatch.py`、`tests/e2e_test.py`）**
+```
+LLM 依赖：llm_base_url=https://api.deepseek.com/v1  llm_model=pageindex_llm_model=deepseek-flash
+          llm_client.health()=True   models=['deepseek-flash','deepseek-v4-pro']
+          （任务书里的 llm_base_url=34.121.9.233:4000 已在 t_3cdebd1f 实测 TCP timeout 下线并切走）
+仓库 e2e：tests/e2e_test.py 8/8 PASS（含 hybrid 检索 + RAG 流式 + 会话落库；上传步骤已显式 embedding）
+存量文档：73 篇（embedding 51 / pageindex 22），**无 index_type 的 0 篇** → 兜底分支不影响任何存量数据
+```
+
+### 4. 部署（沿用既有方式，已生效）
+
+**前端（本轮实际执行）**
+```
+cd frontend && npm run build                         # vite/rolldown，确定性构建（同源两次构建 md5 一致）
+mv 02-development/deploy/dist/assets → assets.prev_031057
+cp -r frontend/dist/assets 02-development/deploy/dist/assets
+cp frontend/dist/index.html 02-development/deploy/dist/index.html && sed -i 's/crossorigin //g'
+docker exec nginx-test nginx -s reload               # nginx-test: /home/harry.zhang/kb-management/02-development/deploy/dist → /usr/share/nginx/kb-management (ro)
+```
+公网验证：
+```
+GET https://agent.carefold.ai/kb-management/ → 200，入口 assets/index-CaTnCPvY.js（= 本次构建）
+KbDetailView-BFQ19UFl.js 内含 `o(`pageindex`)`（indexType 默认值）与 radio 组绑定
+```
+> 顺带发现并修正的**部署滞后**：线上 dist 原为 10-11 14:28 构建，**不含 1d0980d 的前端改动**
+> （DocView.vue 引用深链视图 + KbChatView + api/request.ts + router/index.ts，该提交时间 14:51 晚于构建）。
+> 本轮“重建 + 换装”顺带把 1d0980d 的前端一并带上线（前后端同类功能，服务端 A1-A4 早已就绪）。
+
+**后端（本轮实际执行）**
+```
+9012  uvicorn: 重启加载新代码（启动脚本 scripts/start_backend.sh；旧进程 TERM 后清理，健康 200）
+Celery: 重启（旧 main 进程 TERM 不退出 → SIGKILL 清理，确保只剩 1 个 worker + 2 子进程；queue=kb）
+未重启：MCP 9100（不依赖本次改动；pid 2382073 持续 running）
+```
+**部署后实测占用（`05-temp/t_7f451c5f_env_snapshot.sh`，已回写台账）**
+```
+容器: kb-pg 55.16MiB / kb-es 1.184GiB / kb-minio 137.6MiB / kb-dev-redis 12.25MiB
+      kb-embed 1.195GiB (上限 4G) / nginx-test 10.7MiB        ← 无新增容器、无新增端口
+host 进程 RSS: 9012 ≈150MB / 9100 ≈130MB / celery 112+145+128MB
+端口: 80/443/9011/9012/9200/9002/8100/9100 均监听正常（无变化）
+```
+台账更新：`~/hermes-workspace/shared/infrastructure/SERVER_REGISTRY.md`（变更日志新增本条）。
+
+### 5. 已知问题 / 风险
+
+1. **【P1，需产品决策】默认上传=pageindex 与默认问答模式=hybrid 错配**：新文档默认走树索引、**不写 ES 分块**
+   （`chunk_count=0`），而问答接口/问答页的默认 `retrieval_mode` 仍是 `hybrid`（`schemas.py:240`、
+   `KbChatView.vue:103`）。实测同一篇默认上传的文档：
+   ```
+   默认（不传 retrieval_mode → hybrid）: sources=0  answer="知识库中未找到相关内容。…【参考片段】为空…"
+   显式 retrieval_mode=pageindex      : sources=1  answer="…验收口令是：靛蓝-5824。[1]"（正确）
+   ```
+   这正是 `tests/e2e_test.py` 第 7 步在改动后首次运行失败的原因（该套件已改为显式 embedding 上传）。
+   **本轮未改问答默认模式**（任务书限定只改 2 处，且问答默认全局改为 pageindex 会反向打断 51 篇 embedding 存量库的问答）。
+   建议由产品/PM 决策：问答页按 KB 索引构成自动选模式，或在识别到「本 KB 无 ES 分块」时给出明确引导。
+   → 已建后续卡（见完成说明）。
+2. **推理型模型的输出预算 = 成本与延迟**：`deepseek-flash` 单次建树思考可吃掉 ~2.5 万字符 reasoning
+   （completion_tokens 最高观测 9750），单篇建树 ~25-50s、检索单次 ~2-4s。预算抬高只影响“上限”，
+   但 reasoning tokens 是按量计费的，KB 规模上来后需评估成本；若要根治，应换非推理模型或支持关闭 thinking。
+3. **小文档的树粒度不稳定（既有特性，非本次引入）**：同一 484 字文档，LLM 建树结果是 `node_count=2`（单叶子
+   “全文”）到 `6`（按 heading 展开）之间浮动。树退化成单叶子时，若该叶子 summary 未覆盖问题涉及的细节，
+   检索会**按设计**返回空选区（提示“未检索到相关内容，换一种问法”），而不是乱凑。
+   建议（非阻塞）：小文档建树时要求按 heading 展开、或对单叶子树在检索侧加“整篇兜底”。
+4. **线上前端 dist 曾滞后于代码**：见 §4 备注，本轮已同步到 1d0980d + 本次改动。
+5. **`node_id` 出现双点 `n1..1`**（`_renumber` 在单分片时 `prefix="n1"` + 子节点 `n1.1` → `"n1" + "." + ".1"`）：
+   该 id 会出现在 outline、sources.metadata.node_id 与引用深链里，不影响检索/定位实测结果。
+   属既有实现，本轮**未改**（改 id 方案会动到存量文档的存储语义）。
+6. **并发写同一工作树**：本轮自测期间，同仓并行运行着另一张开发卡（t_f4aac859，同 profile、同
+   `workspace_path`、同分支），期间 9012 被对方重启过一次（03:12）。本轮验证结论均在
+   各自时间点真实有效；`02-development/DEV_REPORT.md` 是本轮唯一共享写入点（追加式写入）。
+   → 已在卡片上标注 `hotspot`。
+
+### 6. 一句话总结
+
+上传文档的默认索引方式已从 embedding 改为 pageindex（后端 Form 默认值 + 前端 radio 默认值，兜底逻辑一处未动），
+并顺带修掉「pageindex 成默认后才暴露」的两个真实缺陷——推理型模型输出预算把建树压成降级树（8192→32768，另加解析失败重试）、
+检索选节点被截断返回空结果（1024→8192）；重构后的 dist 已换装到 nginx 挂载目录并公网生效（默认选中 pageindex、
+不碰 radio 直接上传确实走树索引并建树 ok），7/7 自测 + 3/3 建树稳定性 + UI 端到端 + 仓库 e2e 8/8 全部真实通过。

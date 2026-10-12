@@ -41,11 +41,15 @@ def main():
     print(f"✅ KB created: {kb_id}")
 
     # 4. Upload TXT
-    step("4. Upload TXT document")
+    # 注意：上传接口的 index_type 默认值自 t_7f451c5f 起为 "pageindex"（树索引，不写 ES 分块）。
+    # 本套件第 6/7 步断言的是 embedding/hybrid 链路（ES 分块 + 混合检索 + 带来源问答），
+    # 因此这里必须**显式**传 index_type="embedding"，否则测的是另一条链路。
+    step("4. Upload TXT document (explicit index_type=embedding)")
     content = ("知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、"
                "向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。"
                "部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。")
     r = c.post(f"{BASE}/knowledge-bases/{kb_id}/documents", headers=H,
+               data={"index_type": "embedding"},
                files={"file": ("test.txt", content.encode(), "text/plain")})
     d = r.json()
     assert d["code"] == 0, f"upload failed: {d}"

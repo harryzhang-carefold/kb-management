@@ -128,8 +128,8 @@ const kbId = route.params.id as string
 const kb = ref<any>(null)
 const docs = ref<any[]>([])
 const loading = ref(false)
-// v2：上传时按文档二选一索引方式（默认 embedding 保持现有行为）
-const indexType = ref<'embedding' | 'pageindex'>('embedding')
+// v2：上传时按文档二选一索引方式（默认 pageindex；显式选 embedding 时走原分块+向量行为）
+const indexType = ref<'embedding' | 'pageindex'>('pageindex')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 // 原文查看

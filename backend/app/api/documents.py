@@ -70,15 +70,16 @@ def list_docs(kb_id: UUID,
 @router.post("/knowledge-bases/{kb_id}/documents")
 async def upload_doc(kb_id: UUID,
                      file: UploadFile = File(...),
-                     index_type: str = Form("embedding", pattern="^(embedding|pageindex)$"),
+                     index_type: str = Form("pageindex", pattern="^(embedding|pageindex)$"),
                      db: Session = Depends(get_db),
                      user: User = Depends(get_current_user)):
     """上传文档。
 
     index_type（v2，按文档二选一，互斥）：
-    - "embedding"（默认，保持现有行为）：解析 → 分块 → 向量索引（ES）
-    - "pageindex"：解析 → 分块+向量索引（保留原文/锚点）→ 异步构建 PageIndex 树索引
+    - "pageindex"（默认，新文档走树索引）：解析 → 分块+向量索引（保留原文/锚点）→ 异步构建 PageIndex 树索引
+    - "embedding"：解析 → 分块 → 向量索引（ES）
     文档自身记录 index_type 到 meta，重建索引按此执行。
+    注：历史无 index_type 的文档仍按 embedding 兜底处理（见 workers/tasks.py 分流）。
     """
     kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
     if not kb:

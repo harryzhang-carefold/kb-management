@@ -27,6 +27,11 @@ from app.utils.ai_client import llm_client
 # 常量（设计 §4.3）
 # ----------------------------------------------------------------------
 MAX_DOC_CHARS = 32000        # 建树单次 LLM 输入上限（≈16k tokens）
+BUILD_MAX_TOKENS = 32768     # 建树输出预算：推理型模型（deepseek-flash 等）的 reasoning 计入
+                             # completion_tokens，8192 时思考可吃满预算 → content 为空 → 建树降级
+                             # （实测 484 字文档 1/5 次 finish_reason=length/content=0）
+RETRIEVE_MAX_TOKENS = 8192   # 检索选节点输出预算：同为推理型模型，1024 时实测 1/6 次
+                             # finish_reason=length → content 为空 → 空结果（不硬凑的兜底不触发）
 MAX_OUTLINE_DOCS = 50        # 单次检索参与推理的文档数上限（R5）
 MAX_CONTENT_CHARS = 3000     # 单节点引用原文截断
 MAX_NODES = 100              # 节点数上限
@@ -403,33 +408,42 @@ def _llm_build_piece(piece: str, base_offset: int, node_prefix: str) -> dict:
         {"role": "system", "content": BUILD_SYSTEM},
         {"role": "user", "content": user_prompt},
     ]
-    raw = llm_client.chat(
-        messages, temperature=0.0, max_tokens=8192,
-        timeout=settings.pageindex_build_timeout, json_mode=True,
-    )
-    data = _extract_json(raw)
-    root = data.get("root")
-    if not isinstance(root, dict):
-        raise ValueError("建树 LLM 输出缺少 root")
 
-    # 校验（单片：root.start≈0, root.end≈片长）；失败带错误信息重试一次
-    errors = _validate_tree(data, len(piece))
+    def _attempt(msgs: list[dict]) -> tuple[dict, dict]:
+        """一次调用 + 解析；输出为空/不可解析/缺 root 都抛异常。"""
+        raw = llm_client.chat(
+            msgs, temperature=0.0, max_tokens=BUILD_MAX_TOKENS,
+            timeout=settings.pageindex_build_timeout, json_mode=True,
+        )
+        data = _extract_json(raw)
+        root = data.get("root")
+        if not isinstance(root, dict):
+            raise ValueError("建树 LLM 输出缺少 root")
+        return data, root
+
+    # 首次调用：解析失败（如输出被预算截断 → content 为空）与结构校验失败同样触发一次重试
+    data, root, errors = None, None, []
+    try:
+        data, root = _attempt(messages)
+        errors = _validate_tree(data, len(piece))
+    except Exception as exc:
+        errors = [f"上一次输出无法解析为树 JSON（{exc}）"]
+
     if errors:
         retry_user = user_prompt + (
             "\n\n上一次输出有如下问题，请修正后重新输出：\n- "
             + "\n- ".join(errors[:5])
         )
-        raw2 = llm_client.chat(
-            messages[:1] + [{"role": "user", "content": retry_user}],
-            temperature=0.0, max_tokens=8192,
-            timeout=settings.pageindex_build_timeout, json_mode=True,
-        )
-        data2 = _extract_json(raw2)
-        root2 = data2.get("root") if isinstance(data2, dict) else None
-        if isinstance(root2, dict) and not _validate_tree(data2, len(piece)):
-            root = root2
+        try:
+            data2, root2 = _attempt(messages[:1] + [{"role": "user", "content": retry_user}])
+            if not _validate_tree(data2, len(piece)):
+                data, root = data2, root2
+        except Exception:
+            if root is None:
+                raise  # 两次都没拿到可用 JSON → 交由上层降级
 
     # 平移偏移 + 重编号节点
+    assert isinstance(root, dict)  # 两次都没拿到可用 JSON 时已在上面 raise
     renumbered = _renumber(root, node_prefix, is_root=True)
     renumbered["start"] = base_offset + int(renumbered.get("start", 0))
     renumbered["end"] = base_offset + int(renumbered.get("end", 0))
@@ -644,7 +658,7 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
                 question=question, outline_lines="\n".join(outline_lines))},
         ]
         raw = llm_client.chat(
-            messages, temperature=0.0, max_tokens=1024,
+            messages, temperature=0.0, max_tokens=RETRIEVE_MAX_TOKENS,
             timeout=settings.pageindex_retrieve_timeout, json_mode=True,
         )
         data = _extract_json(raw)
