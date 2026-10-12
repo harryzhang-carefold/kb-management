@@ -940,3 +940,19 @@ MCP :9100 已从裸进程常驻化为 systemd user 单元（`Restart=always`，�
 ### 8. 一句话总结
 
 新增 `auto`（智能，前端「智能（推荐）」）检索模式并作为 `/search.mode`、`/chat.retrieval_mode` 默认值：按 KB 实时索引构成主动路由（仅 embedding→ES 混合、仅 pageindex→树索引、两者都有→**两路都执行后合并**、都无→空+引导文案），显式 mode 与 `pageindex 0 命中不回退 ES` 红线零改动；混合库「默认上传 + 默认提问」由 0 来源变为带来源作答（AC1 sources=3 且答案含口令），纯 embedding 库与 `hybrid` 逐条一致且不产生任何 pageindex 调用，新增 SQL p95 1.92ms，混合库每次多 1 次 LLM 调用（prompt 644 字符）与 1.9–7.9s 墙钟；自测 35/35 + 17/17 + 32/32 + 6/6 + e2e 8/8 全绿，前端 dist 已重建换装（本地/线上 md5 一致），Q1（接口默认值是否获用户认可）待褚岩确认。
+
+### 9. 补充：线上浏览器级验证（AC10/AC11 证据补强，2026-10-12 03:41 UTC）
+
+在换装后的公网 `https://agent.carefold.ai/kb-management/` 上用真实浏览器（无密码：本地签 token 注入 `localStorage.kb_token`，脚本 `05-temp/t_efead8b4_ui_prep.py`）核验：
+
+1. **问答页** `/kb/665c922d…/chat`（纯 pageindex 夹具 KB）：
+   模式组渲染为 `[智能（推荐）, 混合, 向量, 关键词, PageIndex]`，**默认选中「智能（推荐）」**（`.el-radio-button.is-active`），
+   模式组旁小字 `智能模式：按本知识库的索引构成自动选择检索方式` 存在。
+2. **默认提问的真实请求体**（页面 fetch 抓取）：`{"question":"本知识库的验收口令是什么？","retrieval_mode":"auto"}`
+   → **前端确实按默认传 `auto`**（不是 `hybrid`）。返回：3 条 sources（均为 `t_efead8b4_doc_pi_ac1.md`，`leg=pageindex`），
+   答案含口令 `星火-7315`；**无 notice 提示条、无红色错误弹窗**。
+3. **检索页** `/kb/665c922d…/search`：默认同为「智能（推荐）」；查询「验收口令是什么」→ 3 条结果 / 1649ms，
+   `match_type=PageIndex` 且结果元信息中可见 `leg: pageindex`（本次新增字段在前端可见）。
+
+> 结论：AC10 的"默认选中「智能（推荐）」+ 默认传 `auto`"与 AC11 的"线上默认链路提问有来源"在**换装后的线上产物**上成立。
+> 该证据由开发侧提供，**AC10/AC11 的最终判定仍归测试侧**（建议按 `05-temp/t_7f451c5f_ui_verify.py` 方式独立复现一遍，并补测"手动切到其他模式后请求体为对应值"与"0 命中灰色提示条（非红色）"两个分支）。
