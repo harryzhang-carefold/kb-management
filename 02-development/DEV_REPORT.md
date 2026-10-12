@@ -726,6 +726,11 @@ KbDetailView-BFQ19UFl.js 内含 `o(`pageindex`)`（indexType 默认值）与 rad
 Celery: 重启（旧 main 进程 TERM 不退出 → SIGKILL 清理，确保只剩 1 个 worker + 2 子进程；queue=kb）
 未重启：MCP 9100（不依赖本次改动；pid 2382073 持续 running）
 ```
+> **补充（并发卡影响，已核对）**：本轮期间同仓并行卡 t_f4aac859 于 03:12 把 9012 的常驻方式升级为
+> **systemd user 单元 `kb-backend-9012.service`（Restart=always）**，故 03:12 之后线上 9012（pid 3056922，
+> PPID=systemd --user）由 systemd 托管并从工作树重新加载代码。本报告 §3 证据 4/5 与 §5 的实测均运行在该实例上
+> （health 200、默认 pageindex 上传→建树 ok→检索/问答正常），即**结论对当前运行实例有效**。
+> Celery 目前仍是会话内 nohup 进程（未做 service），本轮的重启仅影响 worker 进程本身。
 **部署后实测占用（`05-temp/t_7f451c5f_env_snapshot.sh`，已回写台账）**
 ```
 容器: kb-pg 55.16MiB / kb-es 1.184GiB / kb-minio 137.6MiB / kb-dev-redis 12.25MiB
