@@ -167,7 +167,7 @@ const uploadHeaders = computed(() => ({
 const uploadData = computed(() => ({ index_type: indexType.value }))
 
 const hasProcessing = computed(() =>
-  docs.value.some(d => d.status === 'parsing' || d.status === 'chunking' || d.status === 'uploading')
+  docs.value.some(d => ['uploaded', 'parsing', 'parsed', 'chunking', 'embedding', 'uploading'].includes(d.status))
 )
 const processingHint = computed(() =>
   hasProcessing.value || hasPiBuilding.value
@@ -223,10 +223,10 @@ const beforeUpload = (file: File) => {
   return true
 }
 
-const onUploadSuccess = (res: any) => {
+const onUploadSuccess = async (res: any) => {
   if (res.code === 0) {
     ElMessage.success('上传成功，正在处理...')
-    fetchDocs()
+    await fetchDocs()
     startPolling()
   }
 }
@@ -239,7 +239,7 @@ const handleReparse = async (row: any) => {
   try {
     await reparseDoc(kbId, row.id)
     ElMessage.success('已重新提交解析')
-    fetchDocs()
+    await fetchDocs()
     startPolling()
   } catch { /* handled by interceptor */ }
 }
@@ -276,7 +276,8 @@ const handleReindex = async (row: any) => {
     await ElMessageBox.confirm(`确定按「${label}」重建「${row.filename}」的索引？`, '确认', { type: 'warning' })
     await reindexDoc(kbId, row.id)
     ElMessage.success('已提交重建索引任务')
-    fetchDocs()
+    await fetchDocs()
+    startPolling()
   } catch { /* cancelled */ }
 }
 

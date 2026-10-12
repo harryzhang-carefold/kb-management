@@ -9,7 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from app.core.config import settings
-from app.core.database import SessionLocal
+from app.core.database import SessionLocal, engine
+engine.echo = False
 from app.models import Document, KnowledgeBase
 from app.utils.minio_client import minio_client
 from app.knowledge import documents, store

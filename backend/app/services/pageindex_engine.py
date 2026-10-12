@@ -596,7 +596,7 @@ def _split_by_heading(full_text: str, limit: int = MAX_DOC_CHARS) -> list[tuple[
     return pieces
 
 
-def build_tree_index(document: Document, db) -> dict:
+def build_tree_index(document: Document, db, *, force: bool = False) -> dict:
     """生成树并写入 document.meta['pageindex_tree']，返回树 meta。
 
     流程：分片 → 逐片 LLM 建树 → 合并 → 校验 → 降级兜底。
@@ -604,7 +604,7 @@ def build_tree_index(document: Document, db) -> dict:
     """
     if document.file_type == 'pdf':
         from app.knowledge.ingestion import build_pdf_index
-        return build_pdf_index(document, db)
+        return build_pdf_index(document, db, force=force)
     document = db.query(Document).filter_by(id=document.id).with_for_update().one()
     if document.is_deleted:
         raise ValueError('Knowledge Source was deleted')

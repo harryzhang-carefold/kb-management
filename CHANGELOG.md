@@ -2,6 +2,8 @@
 
 ## 2026-10-12
 
+- Fix queued/parsed/embedding status polling after upload and reparse, and restart polling after an index rebuild. Keep the last successful index until replacement publication; explicit rebuild requests bypass the indexing cache.
+
 - Merge the deployed auto-retrieval and citation fixes before extending `feat/pageindex`.
 - Integrate the independent Carefold PDF/OCR/version/evidence implementation into the existing 9100 MCP service. Preserve the six KB tools and web retrieval routes.
 - Parse PDFs locally without a mandatory MinerU service. Preserve physical pages, exact passages, source revisions, continuous bounded reading and Invocation-scoped citation checks.

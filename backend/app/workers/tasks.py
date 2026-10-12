@@ -227,7 +227,7 @@ def _queue_pageindex_build(db: Session, doc: Document, document_id: str):
 
 @celery_app.task(base=KBTask, bind=True, name="kb.build_pageindex", queue="kb",
                  time_limit=900, soft_time_limit=840)
-def build_pageindex_task(self, document_id: str, task_id: str):
+def build_pageindex_task(self, document_id: str, task_id: str, *, force: bool = False):
     """阶段3：PageIndex 树索引构建（LLM 密集，30-120s）。
 
     触发条件（v2）：文档 meta.index_type == "pageindex"（上传时按文档二选一），
@@ -265,7 +265,7 @@ def build_pageindex_task(self, document_id: str, task_id: str):
         doc.meta = meta
         db.commit()
 
-        tree_meta = build_tree_index(doc, db)
+        tree_meta = build_tree_index(doc, db, force=force)
 
         # 刷新 doc 读取最新 meta（build_tree_index 已 commit）
         db.expire_all()

@@ -30,10 +30,14 @@ backend/.venv/bin/python - "$PROJECT_DIR" <<'PY'
 import os, signal, subprocess, sys, time
 root = sys.argv[1] + '/backend/.venv/bin/'
 pids = []
-for line in subprocess.check_output(['ps', '-u', str(os.getuid()), '-o', 'pid=,args='], text=True).splitlines():
-    pid, command = line.strip().split(None, 1)
+parents = {}
+for line in subprocess.check_output(['ps', '-u', str(os.getuid()), '-o', 'pid=,ppid=,args='], text=True).splitlines():
+    pid, parent, command = line.strip().split(None, 2)
     if (root + 'uvicorn ') in command or (root + 'celery ') in command:
-        os.kill(int(pid), signal.SIGTERM); pids.append(int(pid))
+        parents[int(pid)] = int(parent)
+for pid, parent in parents.items():
+    if parent not in parents:
+        os.kill(pid, signal.SIGTERM); pids.append(pid)
 for _ in range(120):
     active = []
     for pid in pids:

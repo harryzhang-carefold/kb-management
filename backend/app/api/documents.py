@@ -250,8 +250,8 @@ def reparse_doc(kb_id: UUID, doc_id: UUID,
     # 保留 index_type（v2：重建按该文档自身的 index_type 执行）
     meta = dict(doc.meta or {})
     if meta.get("index_type") == "pageindex":
-        meta.pop("pageindex_tree", None)
-        meta["pageindex_status"] = "none"
+        # Keep the last successful index until its replacement is published.
+        meta["pageindex_status"] = "building"
     elif "pageindex_tree" in meta:
         meta.pop("pageindex_tree", None)
         meta.pop("pageindex_status", None)
@@ -303,7 +303,7 @@ def reindex_doc(kb_id: UUID, doc_id: UUID,
     db.add(task)
     db.commit()
     if index_type == 'pageindex':
-        build_pageindex_task.delay(str(doc_id), str(task.id))
+        build_pageindex_task.delay(str(doc_id), str(task.id), force=True)
     else:
         chunk_index_task.delay(str(doc_id), str(task.id))
     return ok({"task_id": task.id, "index_type": index_type})
@@ -337,7 +337,7 @@ def rebuild_pageindex(kb_id: UUID, doc_id: UUID,
     db.add(task)
     db.commit()
     db.refresh(task)
-    build_pageindex_task.delay(str(doc_id), str(task.id))
+    build_pageindex_task.delay(str(doc_id), str(task.id), force=True)
     return ok({"task_id": task.id})
 
 
