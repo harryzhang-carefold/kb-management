@@ -295,15 +295,17 @@ def reindex_doc(kb_id: UUID, doc_id: UUID,
         # 显式生成 id：避免依赖 commit/refresh 回填
         task = ProcessTask(id=uuid.uuid4(), document_id=doc_id,
                            task_type="pageindex", status="pending")
-        build_pageindex_task.delay(str(doc_id), str(task.id))
     else:
         # embedding 重建：复用 chunk_index 任务（full_text 已存在，仅重切块+重向量）
         task = ProcessTask(id=uuid.uuid4(), document_id=doc_id,
                            task_type="chunk_index", status="pending")
-        chunk_index_task.delay(str(doc_id), str(task.id))
 
     db.add(task)
     db.commit()
+    if index_type == 'pageindex':
+        build_pageindex_task.delay(str(doc_id), str(task.id))
+    else:
+        chunk_index_task.delay(str(doc_id), str(task.id))
     return ok({"task_id": task.id, "index_type": index_type})
 
 

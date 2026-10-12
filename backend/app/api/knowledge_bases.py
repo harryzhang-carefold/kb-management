@@ -150,6 +150,7 @@ def delete_kb(kb_id: UUID, db: Session = Depends(get_db),
         raise not_found("知识库不存在")
     require_kb_access(user, kb, min_role="owner")
     kb.is_deleted = True
+    db.query(Document).filter_by(kb_id=kb_id).update({'is_deleted': True})
     db.commit()
     # 异步清理 ES + MinIO
     cleanup_kb_task.delay(str(kb_id))

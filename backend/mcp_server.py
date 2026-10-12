@@ -32,7 +32,8 @@ from mcp.server.mcpserver import MCPServer
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.security import create_view_token
+from app.core.security import create_view_token, decode_token
+import secrets
 from app.models import KnowledgeBase, KbMember, Document, Chunk, User
 from app.utils.es_client import es_client
 from app.utils.ai_client import embedding_client
@@ -45,16 +46,19 @@ from app.services.rag_engine import rag_engine
 
 def _resolve_kb(kb_id: str | None, name: str | None) -> KnowledgeBase:
     """通过 id 或 name 解析知识库。"""
+    allowed = accessible_kb_ids()
     db = SessionLocal()
     try:
         if kb_id:
             kb = db.query(KnowledgeBase).filter(
                 KnowledgeBase.id == uuid.UUID(kb_id),
+                KnowledgeBase.id.in_(allowed),
                 KnowledgeBase.is_deleted.is_(False),
             ).first()
         elif name:
             kb = db.query(KnowledgeBase).filter(
                 KnowledgeBase.name.ilike(name),
+                KnowledgeBase.id.in_(allowed),
                 KnowledgeBase.is_deleted.is_(False),
             ).first()
         else:
@@ -346,6 +350,8 @@ def _pageindex_only_hint(kb_ids: list[str]) -> Optional[str]:
 # MCP Server
 # ============================================================
 
+from app.knowledge.access import request_headers, accessible_kb_ids
+
 mcp = MCPServer(
     name="kb-management",
     title="知识库管理系统 MCP Server",
@@ -353,6 +359,9 @@ mcp = MCPServer(
     version="1.0.0",
 )
 
+
+from app.knowledge.mcp_tools import register as register_evidence_tools
+register_evidence_tools(mcp)
 
 # ---- 1. 列出知识库 ----
 
@@ -365,7 +374,7 @@ def list_knowledge_bases(keyword: Optional[str] = None) -> str:
     """
     db = SessionLocal()
     try:
-        q = db.query(KnowledgeBase).filter(KnowledgeBase.is_deleted.is_(False))
+        q = db.query(KnowledgeBase).filter(KnowledgeBase.is_deleted.is_(False), KnowledgeBase.id.in_(accessible_kb_ids()))
         if keyword:
             q = q.filter(KnowledgeBase.name.ilike(f"%{keyword}%"))
         kbs = q.order_by(KnowledgeBase.created_at.desc()).all()
@@ -487,7 +496,7 @@ def search_knowledge(
         db = SessionLocal()
         try:
             kbs = db.query(KnowledgeBase.id).filter(
-                KnowledgeBase.is_deleted.is_(False)).all()
+                KnowledgeBase.is_deleted.is_(False), KnowledgeBase.id.in_(accessible_kb_ids())).all()
             target_kb_ids = [str(kb_id) for (kb_id,) in kbs]
         finally:
             db.close()
@@ -643,6 +652,7 @@ def rag_query(
             kb = db.query(KnowledgeBase).filter(
                 KnowledgeBase.is_deleted.is_(False),
                 KnowledgeBase.status == "active",
+                KnowledgeBase.id.in_(accessible_kb_ids()),
             ).order_by(KnowledgeBase.created_at.desc()).first()
         finally:
             db.close()
@@ -777,6 +787,7 @@ def get_document_chunks(
 
         doc = db.query(Document).filter(
             Document.id == doc_uuid,
+            Document.kb_id.in_(accessible_kb_ids()),
             Document.is_deleted.is_(False),
         ).first()
         if not doc:
@@ -844,24 +855,10 @@ if __name__ == "__main__":
 # MCP Bearer 鉴权中间件（V2 §6.2 必改项）
 # ============================================================
 
-def _is_jwt_shape(token: str) -> bool:
-    """三段式 JWT 形态（仅格式校验，不跨系统验签——9100 不暴露公网兜底）。
-
-    ⚠️ 风险预案：agent 开了 forwardCallerAuthorization，可能用用户 JWT 覆盖
-    Authorization 头。中间件"双接受"：匹配 KB_MCP_API_KEY 放行；或合法三段式
-    JWT 形态放行（B 块注册后跑真实对话验证 agent 实际发什么头，再定最终策略）。
-    """
-    parts = token.split(".")
-    if len(parts) != 3:
-        return False
-    b64url = re.compile(r"^[A-Za-z0-9_-]+={0,2}$")
-    return all(b64url.match(p) for p in parts)
-
-
 def _mcp_auth_middleware(app):
     """MCP Bearer 鉴权中间件工厂（参照 carefold-saas mcp_server.py 先例）。
 
-    校验 Authorization: Bearer <KB_MCP_API_KEY>（或三段式 JWT 形态）。
+    校验独立服务密钥或知识库签名的有效 access JWT。
     key 未配置时放行（本地开发）；配置后无/错 key → 401。
     """
 
@@ -875,14 +872,19 @@ def _mcp_auth_middleware(app):
                 auth = v.decode("latin-1")
                 break
         token = auth[len("Bearer "):].strip() if auth.startswith("Bearer ") else ""
-        if not (token == settings.kb_mcp_api_key or _is_jwt_shape(token)):
+        if not (secrets.compare_digest(token.encode(), settings.kb_mcp_api_key.encode()) or decode_token(token, 'access')):
             body = b'{"error":"unauthorized"}'
             await send({"type": "http.response.start", "status": 401,
                         "headers": [(b"content-type", b"application/json"),
                                     (b"content-length", str(len(body)).encode())]})
             await send({"type": "http.response.body", "body": body})
             return
-        await app(scope, receive, send)
+        headers_token = request_headers.set({key.decode('latin-1').lower(): value.decode('latin-1')
+                                             for key, value in scope.get('headers', [])})
+        try:
+            await app(scope, receive, send)
+        finally:
+            request_headers.reset(headers_token)
 
     return middleware
 
@@ -902,6 +904,7 @@ _mcp_security = TransportSecuritySettings(
     allowed_hosts=[
         "127.0.0.1:9100",
         "localhost:9100",
+        "host.docker.internal:9100",
         "172.19.0.1:9100",  # carefold-agent docker 网桥网关（agent 容器经此访问）
     ],
 )

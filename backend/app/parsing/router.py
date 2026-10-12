@@ -62,6 +62,9 @@ def parse_document(data: bytes, filename: str, file_type: str | None = None) -> 
             return local_parsers.parse_html(data, filename)
         if ftype == "pptx":
             return local_parsers.parse_pptx(data, filename)
+        if ftype == 'pdf':
+            from app.knowledge.ingestion import parse_pdf
+            return parse_pdf(data, filename)
         if ftype in _MINERU_TYPES:
             try:
                 return parse_with_mineru(data, filename, ftype)

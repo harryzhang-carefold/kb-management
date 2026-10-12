@@ -60,6 +60,7 @@ class MinioClient:
             logger.info(f"MinIO removed {key}")
         except S3Error as e:
             logger.warning(f"MinIO remove {key} failed: {e}")
+            raise
 
     def remove_prefix(self, prefix: str):
         """删除某前缀下所有对象（删除知识库/文档时清理）。"""

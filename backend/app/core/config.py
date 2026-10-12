@@ -98,6 +98,13 @@ class Settings(BaseSettings):
 
     # ---- PageIndex（无向量、树索引 + LLM 推理检索）----
     pageindex_llm_model: str = "deepseek-flash"  # 建树/检索推理专用模型（复用 llm_base_url/api_key）
+    kb_mcp_organization_id: str = 'default'
+    kb_mcp_agent_definition_ids: list[str] = ['carefold-support']
+    kb_mcp_actor_bindings: dict[str, str] = {}
+    carefold_scope_signing_secret: str = ''
+    pageindex_vision_enabled: bool = False
+    pageindex_ocr_languages: str = 'eng+chi_sim+chi_tra'
+    pageindex_tessdata: str = '/usr/share/tesseract-ocr/5/tessdata'
     pageindex_build_timeout: int = 300    # 建树单次 LLM 调用超时（秒）
     pageindex_retrieve_timeout: int = 60  # 检索推理单次 LLM 调用超时（秒）
     pageindex_retrieve_attempts: int = 3  # 检索选节点「空判定」重试上限（BUG-V4-01：

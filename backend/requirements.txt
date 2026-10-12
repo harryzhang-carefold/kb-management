@@ -1,20 +1,20 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
+fastapi==0.135.1
+uvicorn[standard]==0.41.0
 sqlalchemy==2.0.35
 alembic==1.13.3
 psycopg2-binary==2.9.10
-pydantic==2.9.2
-pydantic[email]==2.9.2
+pydantic==2.13.5
+pydantic[email]==2.13.5
 email-validator==2.2.0
-pydantic-settings==2.5.2
+pydantic-settings==2.15.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==4.2.0
-python-multipart==0.0.12
+python-multipart==0.0.32
 celery==5.4.0
 redis==5.1.0
-httpx==0.27.2
-openai==1.52.0
+httpx==0.28.1
+openai==2.54.0
 minio==7.2.10
 elasticsearch==8.13.0
 pypdf==4.3.1
@@ -23,19 +23,19 @@ python-pptx==1.0.2
 openpyxl==3.1.5
 beautifulsoup4==4.12.3
 loguru==0.7.2
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 
 # MCP Server（backend/mcp_server.py，独立进程 :9100）
-# ⚠️ mcp 2.3.0 要求 pydantic>=2.12，主 venv 的 FastAPI backend 用 pydantic 2.9.2，
-# 两者不能共存于同一 venv（会升级 pydantic 破坏 9012 backend）。
-# 部署方式：独立 venv 或隔离 PYTHONPATH（当前自测用 05-temp/mcpstage 轮子目录，
-# scripts/start_mcp.sh 自动挂载）。A4 负责 9100 常驻化时推荐 docker 独立容器
-# （见 DEV_REPORT A2 部署风险）。
+# API、worker 和 MCP 使用 requirements.lock.txt 的同一依赖环境。
 mcp==2.3.0
 
 # 测试
 pytest==8.3.3
 pytest-asyncio==0.24.0
-httpx==0.27.2
+httpx==0.28.1
 factory-boy==3.3.1
-anyio==4.6.2
+anyio==4.15.1
+
+# Independent Carefold PDF evidence implementation.
+PyMuPDF==1.27.1
+pageindex @ git+https://github.com/VectifyAI/PageIndex.git@6d23caf416858f2ca136840305d1f479a86f6ef7

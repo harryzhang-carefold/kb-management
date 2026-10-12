@@ -25,7 +25,7 @@ class KBTask(Task):
 
 
 def _update_doc(db: Session, doc_id: str, **kwargs):
-    doc = db.query(Document).filter_by(id=doc_id).first()
+    doc = db.query(Document).filter_by(id=doc_id, is_deleted=False).first()
     if doc:
         for k, v in kwargs.items():
             setattr(doc, k, v)
@@ -55,7 +55,7 @@ def parse_document_task(self, document_id: str, task_id: str):
         _update_doc(db, document_id, status="parsing")
 
         doc = db.query(Document).filter_by(id=document_id).first()
-        if not doc:
+        if not doc or doc.is_deleted:
             _update_task(db, task_id, status="failed", error_message="文档不存在")
             return
 
@@ -64,7 +64,12 @@ def parse_document_task(self, document_id: str, task_id: str):
 
         # 解析（MinerU / 本地轻量），返回 (markdown, meta)
         from app.parsing import parse_document as _parse
-        text, meta = _parse(data, doc.filename, doc.file_type)
+        if doc.file_type == 'pdf' and (doc.meta or {}).get('index_type') == 'pageindex':
+            from app.knowledge.ingestion import build_pdf_index
+            build_pdf_index(doc, db)
+            text, meta = doc.full_text, dict(doc.meta or {})
+        else:
+            text, meta = _parse(data, doc.filename, doc.file_type)
 
         # 存全文 + 元数据（v2：保留 index_type，解析 meta 不覆盖）
         new_meta = dict(meta or {})
@@ -303,22 +308,21 @@ def build_pageindex_task(self, document_id: str, task_id: str):
         db.close()
 
 
-@celery_app.task(name="kb.cleanup_document", queue="kb")
+@celery_app.task(base=KBTask, name="kb.cleanup_document", queue="kb")
 def cleanup_document_task(document_id: str, minio_key: str, es_kb_id: str):
-    """清理：删 ES chunks + MinIO 文件。"""
-    try:
-        es_client.delete_document(document_id)
-        minio_client.remove_object(minio_key)
-        logger.info(f"[cleanup] doc={document_id}")
-    except Exception as e:
-        logger.error(f"[cleanup] failed doc={document_id}: {e}")
+    """Remove authority files, retained evidence and ES chunks; retry failures."""
+    from app.knowledge.cleanup import document as cleanup_evidence
+    cleanup_evidence(document_id)
+    es_client.delete_document(document_id)
+    logger.info(f"[cleanup] doc={document_id}")
 
 
-@celery_app.task(name="kb.cleanup_kb", queue="kb")
+
+@celery_app.task(base=KBTask, name="kb.cleanup_kb", queue="kb")
 def cleanup_kb_task(kb_id: str):
-    """删除知识库时清理 ES 全部 chunks。"""
-    try:
-        es_client.delete_kb(kb_id)
-        logger.info(f"[cleanup_kb] kb={kb_id}")
-    except Exception as e:
-        logger.error(f"[cleanup_kb] failed kb={kb_id}: {e}")
+    """Queue per-document reclamation, then clear the KB ES index."""
+    with SessionLocal() as db:
+        docs = db.query(Document).filter_by(kb_id=kb_id, is_deleted=True).all()
+        for doc in docs:
+            cleanup_document_task.delay(str(doc.id), doc.minio_key, str(doc.kb_id))
+    es_client.delete_kb(kb_id)

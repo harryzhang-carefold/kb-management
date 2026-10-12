@@ -602,6 +602,12 @@ def build_tree_index(document: Document, db) -> dict:
     流程：分片 → 逐片 LLM 建树 → 合并 → 校验 → 降级兜底。
     document 必须已加载 full_text。db 用于最终 commit（调用方负责会话）。
     """
+    if document.file_type == 'pdf':
+        from app.knowledge.ingestion import build_pdf_index
+        return build_pdf_index(document, db)
+    document = db.query(Document).filter_by(id=document.id).with_for_update().one()
+    if document.is_deleted:
+        raise ValueError('Knowledge Source was deleted')
     t0 = time.time()
     full_text = document.full_text or ""
     if not full_text.strip():
@@ -624,6 +630,8 @@ def build_tree_index(document: Document, db) -> dict:
         doc_meta[TREE_KEY] = meta
         doc_meta[STATUS_KEY] = status
         document.meta = doc_meta
+        from app.knowledge.text_evidence import publish
+        publish(document, meta)
         db.commit()
         return meta
 
@@ -660,6 +668,8 @@ def build_tree_index(document: Document, db) -> dict:
     doc_meta[TREE_KEY] = meta
     doc_meta[STATUS_KEY] = status
     document.meta = doc_meta
+    from app.knowledge.text_evidence import publish
+    publish(document, meta)
     db.commit()
     return meta
 
@@ -684,6 +694,8 @@ def rebuild_tree_index(document: Document, db) -> dict:
     doc_meta.pop(TREE_KEY, None)
     doc_meta[STATUS_KEY] = "building"
     document.meta = doc_meta
+    from app.knowledge.text_evidence import publish
+    publish(document, meta)
     db.commit()
     return build_tree_index(document, db)
 

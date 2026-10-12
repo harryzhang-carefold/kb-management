@@ -214,7 +214,9 @@ const textSegments = computed(() => {
 const buildFileUrl = () => {
   const base = `/kb-management/api/v1/knowledge-bases/${kbId}/documents/${docId}/download`
   if (viewToken) {
-    fileUrl.value = `${base}?token=${viewToken}`
+    const physicalPage = Number(route.query.page)
+    const page = Number.isSafeInteger(physicalPage) && physicalPage > 0 ? physicalPage : 1
+    fileUrl.value = `${base}?token=${viewToken}#page=${page}`
   }
   // 非 token 模式：不设置 fileUrl（浏览器 iframe/img 无法带 Authorization 头）
 }
@@ -224,7 +226,9 @@ const onPdfLoaded = (e: Event) => {
   const frame = e.target as HTMLIFrameElement
   try {
     const win = frame.contentWindow
-    if (win) win.location.hash = '#page=1'
+    const physicalPage = Number(route.query.page)
+    const page = Number.isSafeInteger(physicalPage) && physicalPage > 0 ? physicalPage : 1
+    if (win) win.location.hash = `#page=${page}`
   } catch {
     /* 跨域 PDF 内嵌时无法访问 contentWindow，忽略 */
   }
