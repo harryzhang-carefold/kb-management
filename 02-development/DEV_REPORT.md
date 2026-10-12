@@ -1216,7 +1216,7 @@ RAW=05-temp/t_21918fb2_raw/pi08 RUN_TAG=bugv402_post bash 03-testing/curl/case_P
   `bash 05-temp/t_21918fb2_restart_mcp.sh` → `kb-mcp-9100: active`（新代码 `ActiveEnterTimestamp=2026-10-12 04:56:15Z`，
   重启后无 key 探针仍 401）；9012 后端本次未改，未重启。
 - 无新增容器 / 端口 / 卷；`~/hermes-workspace/shared/infrastructure/SERVER_REGISTRY.md` **无变更**。
-- 本卡提交：`e4674d1`（`feat/default-pageindex`，仅 `backend/mcp_server.py` + `02-development/DEV_REPORT.md`）。
+- 本卡提交：`9c7b13e`（`feat/default-pageindex`，代码 `backend/mcp_server.py` 与本文档同批提交）。
 - 口令/密钥：MCP key 只从 `infra/.env` 读取（脚本仅回显长度），未进命令行、未落盘。
 
 ### 7. 已知问题 / 风险（如实列出）
