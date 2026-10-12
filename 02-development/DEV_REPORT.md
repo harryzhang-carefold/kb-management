@@ -1119,3 +1119,130 @@ bash 05-temp/t_9b05deec_restart.sh     # systemctl --user restart kb-backend-901
 > 现在改为"空判定先做词面相关性裁定 → 有限重试 → 仍不可用则按词面覆盖率**确定性降级返回**，
 > 仅当问题与所有节点主题确实无关时才 0 命中"，并补上"有没有 PageIndex 文档"的文案区分。
 
+---
+
+## BUG-V4-02（P1）修复：MCP `search_knowledge` / `rag_query` 支持 pageindex（t_21918fb2，分支 `feat/default-pageindex`，2026-10-12）
+
+### 1. 复现（先复现，再改；全部真实调用 :9100）
+
+```bash
+# ① 修复前基线：MCP 工具对「只有 pageindex 文档」的 KB（kb_pi=665c922d…，口令 星火-7315）
+TAG=pre KB=665c922d-1760-4fe8-9a4f-3f19ccd622b9 QUERY="本知识库的验收口令是什么？" \
+  bash 05-temp/t_21918fb2_probe.sh     # 落盘 05-temp/t_21918fb2_raw/{pre,post,post2}/
+# ② 官方复现脚本（BUGS.md BUG-V4-02 §复现步骤）
+RAW=05-temp/t_21918fb2_raw/pi08 RUN_TAG=bugv402_post bash 03-testing/curl/case_PI-08_mcp_search_knowledge.sh
+```
+
+修复前实测（`05-temp/t_21918fb2_raw/pre/*.payload.json`）：`search_knowledge` 五种 mode
+（不传/hybrid/vector/keyword/pageindex/auto）**全部 `total=0`、`items=[]`、`message=null`、
+无 error** —— 即 BUGS.md 所述"静默返回 0 条"；`took_ms` 0~12ms（ES 侧本 KB 无 chunk，pageindex
+分支根本不存在）。工具 schema `search_knowledge.mode.default == "hybrid"`，描述里 `pageindex` 出现 0 次。
+
+### 2. 根因（单点，`backend/mcp_server.py`）
+
+`search_knowledge` 把 `mode` **原样透传**给 `es_client.hybrid_search()`，后者只认
+`hybrid/vector/keyword`（`es_client.py:150,184` 的 `if mode in (...)`）：
+- 传 `pageindex`/`auto` → 两个分支都不进 → 空结果（连报错都没有）；
+- pageindex 文档不写 ES 分块（`chunk_count=0`）→ 即使 `hybrid` 也永远命中不到它；
+- `rag_query` 虽然经 `rag_engine.stream_answer()`（`retrieval_mode` 默认 `auto`）已能命中 pageindex，
+  但（a）工具无 `mode` 入参、无法显式指定，（b）`meta.notice`（F6 文案）被丢弃，0 命中时同样"静默"。
+
+### 3. 修改（1 个代码文件：`backend/mcp_server.py`，+232/−42）
+
+**复用（不另写一套）**：
+| 复用什么 | 从哪里复用 | 用途 |
+|---|---|---|
+| `services/auto_retrieval.run_auto` | 站内 `/search`、`/chat` 的 `auto` 执行体（提交 `5856436`） | MCP `mode=auto` 的路由+联邦合并**完全相同**（仅 embedding→ES 腿；仅 pageindex→树索引腿；两者都有→两腿+F4 合并；F6 文案） |
+| `services/pageindex_engine.retrieve` | 站内 `mode=pageindex` 同路径 | MCP 显式 `mode=pageindex`（红线：0 命中不回退 ES） |
+| `services/kb_index.kb_index_composition` | auto 路由的构成统计 | 旧模式（hybrid/vector/keyword）0 命中时判断"本库是否只有 pageindex 文档"→ 给非静默提示 |
+| `_attach_citations` 既有 pageindex 分支 | 本文件（V2 §2.1） | `location={type:node,value:node_id}`（无 `node_id` 降级 chunk）+ `doc_url`；**未改一行**，仅确认被真正走到 |
+| `_trim_items_content` / `_order_items_for_truncation` | 本文件（BUG-1） | 输出布局治理：`content ≤ 400`、引用字段前置、content 末尾 |
+
+**新增/改动**：
+1. `search_knowledge(mode="auto")`（默认 `hybrid → auto`，与站内默认对齐）+ `mode=pageindex` 分支；
+   `auto` 走 `_auto_search()`（逐 KB 调 `run_auto`，跨库按 score 合并；单库结果与站内 `mode=auto` 同源）；
+   `pageindex` 走 `_pageindex_search()`（逐 KB 调 `pageindex_engine.retrieve`，`extra["error"]` → 返回 `error`，
+   `extra["message"]` → 透出 `message`）；`hybrid/vector/keyword` 原路径**逐行未动**。
+2. 返回体新增 `route`（auto/pageindex：`es|pageindex|both|none`）、`degraded`、`message`
+   （F6 文案或引擎区分文案）——**0 命中必有解释**，不再静默。
+3. 旧模式 0 命中且目标 KB「只有 pageindex 文档」→ `_pageindex_only_hint()` 给出可执行提示
+   （原文：`未命中：本知识库的 N 篇文档使用 PageIndex 索引（不写向量分块），向量/关键词检索不到；请改用 mode=auto（智能，默认）或 mode=pageindex。`）。
+4. `rag_query` 新增 `mode: str = "auto"` 入参（透传 `retrieval_mode`），并把 `meta.notice` 透出为
+   `notice`、回显 `retrieval_mode`。
+5. **顺带修复（同文件既有缺陷，探测时真实撞到）**：5 处 `except (ValueError, uuid.UUIDError)`
+   —— Python 标准库 `uuid` **没有** `UUIDError`，该 except 子句求值即 `AttributeError`：
+   只要 try 里抛异常（如 kb_id 非法/已软删），整个工具就抛 `UnexpectedToolError`
+   （实测日志：`AttributeError: module 'uuid' has no attribute 'UUIDError'`）。
+   改为 `(ValueError, TypeError)` / `(ValueError, TypeError, AttributeError)` 后行为正确：
+   非法 uuid → `{"error":"badly formed hexadecimal UUID string"}`；不存在/已删 KB →
+   `{"error":"知识库不存在: <id>"}`（见 §5 E6）。
+
+### 4. 接口契约变更（**需测试侧同步**，有意为之）
+
+| 项 | 变更前 | 变更后 | 影响的既有断言 |
+|---|---|---|---|
+| `search_knowledge.mode` 默认值 | `hybrid` | **`auto`** | `case_AR-301` A3（`mode.default==hybrid`）→ **FAIL（预期）** |
+| tools/list schema/描述 | 不含 `auto`/`智能` | 含（描述已列 auto/pageindex 语义） | `case_AR-301` A4a/A4b/A6 → **FAIL（预期）** |
+| 不传 mode 的行为 | `mode=hybrid`（ES 单路） | `mode=auto`（按构成路由/联邦） | `case_AR-302` B3（回显 `mode=hybrid`）→ **FAIL（预期）**；同 KB 同 query 的 B5/B6（集合与 content 逐字节）**仍 PASS** |
+| `search_knowledge` 返回体 | `query/mode/total/took_ms/items` | 追加 `route`/`degraded`/`message`（纯新增，键序不变） | 无（解析方按 key 取值） |
+| `rag_query` | 无 mode 入参 | 新增 `mode`（默认 auto）与 `retrieval_mode`/`notice` 回显 | 无 |
+
+设计依据：PRD §F8 当时明确"**MCP 保持不变、另行开卡支持 pageindex**"——本卡即那张 follow-up 卡，
+因此 §F8 的"不得把 auto 暴露给 MCP"随之失效；默认值取 `auto` 是为与站内默认一致，
+且这是 BUG-V4-02 影响面的**唯一修法**（智能助手 `carefold-agent` 调 MCP 时不传 `mode`，
+见 `carefold-saas/05-temp/v2_fix_fresh_token_check.py:29`：只有 `{"query","top_k"}`）。
+
+### 5. 自测证据（全部真实运行；脚本与原始返回在 `05-temp/`，不进 git）
+
+日志：`05-temp/t_21918fb2_final_verify.log`（最终代码全量链）、`t_21918fb2_{selftest,regress,regress2,stability,size}.log`；
+原始工具体：`05-temp/t_21918fb2_raw/{pre,post,post2,selftest,regress,regress2,stability,pi08,size}/`。
+
+| # | 用例 | 结果 |
+|---|---|---|
+| E1 | 官方复现 `case_PI-08`（KB 22bcb345：2 篇默认 pageindex + 1 篇对照 embedding） | 修复前 auto/pageindex 全 0；**修复后 auto=4 / pageindex=4（含两篇默认 pageindex 文档 `30691711…`、`dd083cf9…`，12 次返回里此前 0 次出现）**；hybrid/vector/keyword = 2/2/1（旧路径不变） |
+| E2 | 自建 KB + **默认上传**（不传 `index_type`）1 篇 → 轮询 `indexed` → DB 只读核对 `index_type=pageindex / pageindex_status=ok / chunk_count=0 / 树 6 节点` | A0/A0b **PASS** |
+| E3 | 自建 KB：MCP `search_knowledge` 不传 mode（默认） | A1 **PASS**（`total=2~3`、回显 `mode=auto`、`route=pageindex`）；A2 **PASS**（每项带 `doc_url`、`location.type=node` 且 `value` 非空）；A8 **PASS**（`mode=hybrid` 时 `total=0` **但带 message**） |
+| E4 | 自建 KB：`mode=auto` / `mode=pageindex` 与 9012 后端同参对照 | A3/A4/A6/A7 **PASS**（均非空、route=pageindex、`(document_id,node_id)` 交集非空）；题面要求"一致性对照"成立（逐元素集合相等会被 pageindex LLM 选节点的非确定性打破，故按"均非空+交集非空"判定，见 §7.1） |
+| E5 | 自建 KB：`rag_query` 默认（auto）与 `mode=pageindex` | A5 **PASS**（`sources=2~3`、每项 `doc_url`+node `location`、回答含唯一口令） |
+| E6 | 错误入参（顺带修复验证） | 非法 uuid → `{"error":"badly formed hexadecimal UUID string"}`；不存在/软删 KB → `{"error":"知识库不存在: …"}`；**不再抛 `UnexpectedToolError`** |
+| E7 | 回归（MCP 面）| R1/R1b/R2/R2b/R3/R4/R5 **PASS**（三模式跨库 `foreign_docs=0`；无 key → 401）、R6a/R6b/R6c **PASS**（`content ≤ 401`、整包 4424 字符、引用字段在 content 前）；X1–X4 **PASS**（混合库 `route=both` 且命中项**同时覆盖 es 与 pageindex 两腿**；`hybrid` 不漏库） |
+| E8 | 稳定性（依赖 BUG-V4-01 修复已上线） | 同一 KB 同 query `mode=auto`（路由到 pageindex 腿）×**10** → `total = 3,3,3,3,3,3,3,3,3,3`，**10/10 非空且 10/10 命中项含验收口令**（`05-temp/t_21918fb2_raw/stability/totals.txt`） |
+| E9 | 工具 schema | `tools/list`：`search_knowledge.mode.default = "auto"`；`rag_query.mode.default = "auto"` |
+| E10 | 既有用例重放（预期变更留痕） | `case_AR-301` fails=4（A3/A4a/A4b/A6，均为 §4 的有意变更）；`case_AR-302` fails=1（B3 回显 mode），**B5/B6 逐字节一致仍 PASS**（`05-temp/t_21918fb2_raw/{ar301,ar302}/`） |
+
+### 6. 部署（无新增组件/端口，台账无需变更）
+
+- 改动面 = `backend/mcp_server.py`（MCP 工具层）→ 按 `DEPLOY.md §5.0` 口径**只重启 `kb-mcp-9100`**：
+  `bash 05-temp/t_21918fb2_restart_mcp.sh` → `kb-mcp-9100: active`（新代码 `ActiveEnterTimestamp=2026-10-12 04:56:15Z`，
+  重启后无 key 探针仍 401）；9012 后端本次未改，未重启。
+- 无新增容器 / 端口 / 卷；`~/hermes-workspace/shared/infrastructure/SERVER_REGISTRY.md` **无变更**。
+- 本卡提交：`e4674d1`（`feat/default-pageindex`，仅 `backend/mcp_server.py` + `02-development/DEV_REPORT.md`）。
+- 口令/密钥：MCP key 只从 `infra/.env` 读取（脚本仅回显长度），未进命令行、未落盘。
+
+### 7. 已知问题 / 风险（如实列出）
+
+1. **pageindex 选节点的非确定性**（BUG-V4-01 的残余）：同一 query 的命中**集合**可能逐次不同
+   （实测 total 2~4、节点数 3~4 浮动，但**非空稳定**）。故"与后端同参一致性"用"均非空 + 交集非空"判定；
+   测试侧若要求逐元素相等会偶发失败，属引擎固有属性（父卡已记）。
+2. **输出体积**：`top_k=5` 且 5 条全为 pageindex 命中时，工具体 **7173 字符**（10675 字节）；
+   仍 < agent 8000 字符 observation 阈值，但余量（约 10%）小于 embedding 命中（~6300）。
+   若后续 pageindex 项 metadata 再变多，需回到"砍调试字段/限条数"（本条未改代码，仅记录；见 `05-temp/t_21918fb2_size.log`）。
+3. **跨库 auto 的延迟**：不传 `kb_id` 时逐 KB 执行（每 KB 一次 SQL + 其腿），单库 pageindex 腿 1.3–5.4s；
+   若服务器上 KB 数量继续增长，未传 `kb_id` 的 auto 全库扫描会变慢（既有语义，非本次引入）。
+4. **`AR-301`/`AR-302` 的 4+1 条断言已过期**：需测试侧按 §4 表更新（默认值→auto、schema 允许 auto/智能、
+   不传 mode 的对照应改为"与后端 `mode=auto` 同参"）。本卡不改测试树文件。
+5. **soft-deleted KB 报"知识库不存在"**：`_resolve_kb` 只认未删除 KB（既有行为）；本次顺带让它
+   以 `{"error": ...}` 正常返回而不是崩工具。
+6. **embedding 现状**：实测 ES kNN 腿当前**可用**（`kb_emb + mode=vector` 对无关 query 仍返回本库最近 chunk，
+   RRF 1/61 = 0.016393，符合"kNN 无阈值"的既知特性），故本卡自测未依赖 embedding（pageindex 腿独立可验）；
+   BUG-V4-02 边界"embedding 不可用"不影响本修复。
+
+### 8. 一句话总结
+
+> MCP `search_knowledge` 此前把 `mode` 原样丢给只认 hybrid/vector/keyword 的 ES 客户端，
+> pageindex 文档（不写 ES 分块）因此**静默 0 命中**；现在默认 `mode=auto` 并**直接复用站内
+> `services/auto_retrieval.run_auto`**（仅 pageindex→树索引腿、仅 embedding→ES、两者都有→联邦合并），
+> 显式 `pageindex` 走 `pageindex_engine.retrieve`，返回体补 `route/degraded/message` 让 0 命中不再无声，
+> 引用契约（`doc_url` + `location={type:node,value:node_id}`）经既有 `_attach_citations` 分支端到端生效：
+> 自建「默认上传 pageindex」KB 上 MCP 默认检索 `total=2~3` 且带引用，10/10 次稳定非空，与 9012 后端同参一致。
+
