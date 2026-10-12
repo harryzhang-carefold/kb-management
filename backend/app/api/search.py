@@ -67,6 +67,12 @@ def search(kb_id: UUID, req: schemas.SearchReq,
             payload["message"] = extra["message"]
         if extra and extra.get("error"):
             payload["error"] = extra["error"]
+        # BUG-V4-01：区分「没有 pageindex 文档」与「有文档但本次未选中节点」，
+        # 并暴露词面降级信息（selected_by=lexical_fallback），便于上层判断置信度。
+        if extra and extra.get("empty_reason"):
+            payload["empty_reason"] = extra["empty_reason"]
+        if extra and extra.get("fallback"):
+            payload["fallback"] = extra["fallback"]
         return ok(payload)
 
     # 向量检索需要 query embedding

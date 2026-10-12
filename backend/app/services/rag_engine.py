@@ -73,13 +73,16 @@ class RAGEngine:
             if extra and extra.get("error"):
                 yield {"type": "error", "message": f"PageIndex 检索失败: {extra['error']}"}
                 return
-            # 无 pageindex 索引文档 → 提示，不静默回退、不空答
+            # 无 pageindex 索引文档 → 提示，不静默回退、不空答。
+            # BUG-V4-01/OBS-V4-1：这里直接用 engine 给出的区分文案
+            # （「没有 pageindex 文档」vs「有文档但本次未选中节点」）。
             if extra and extra.get("message"):
                 yield {"type": "error", "message": extra["message"]}
                 return
             if not sources:
+                # 兜底（正常情况下 engine 已在 extra["message"] 里给出区分文案）
                 yield {"type": "error",
-                       "message": "未检索到相关 PageIndex 内容，请换一种问法或确认已上传 PageIndex 索引的文档。"}
+                       "message": "未在 PageIndex 索引中检索到相关内容，请换一种问法。"}
                 return
         elif retrieval_mode == "auto":
             # auto（智能）：按本 KB 索引构成**主动**选路 —— 仅 embedding → ES 混合；

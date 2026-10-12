@@ -956,3 +956,166 @@ MCP :9100 已从裸进程常驻化为 systemd user 单元（`Restart=always`，�
 
 > 结论：AC10 的"默认选中「智能（推荐）」+ 默认传 `auto`"与 AC11 的"线上默认链路提问有来源"在**换装后的线上产物**上成立。
 > 该证据由开发侧提供，**AC10/AC11 的最终判定仍归测试侧**（建议按 `05-temp/t_7f451c5f_ui_verify.py` 方式独立复现一遍，并补测"手动切到其他模式后请求体为对应值"与"0 命中灰色提示条（非红色）"两个分支）。
+
+---
+
+## BUG-V4-01（P1）修复：pageindex 检索/问答间歇性 0 命中（t_9b05deec，分支 `feat/default-pageindex`，2026-10-12）
+
+### 1. 复现（先复现，再改）
+
+```bash
+cd /home/harry.zhang/kb-management
+# ① 检索链路的 LLM 侧根因探针（复刻 pageindex_engine.retrieve 的选节点调用，
+#    捕获 finish_reason / usage / 原始 content；只读，不改数据）
+backend/.venv/bin/python 05-temp/t_9b05deec_probe.py 22bcb345-8326-479c-958b-51daa2905715 12
+# ② HTTP 级同参重复取样（同 KB 同 query 同参数 ×12，记录原始 total 序列）
+RUNS=12 bash 05-temp/t_9b05deec_http_repro.sh
+# ③ 问答侧（SSE，retrieval_mode=pageindex ×5，记录 sources 与 error 事件）
+RUNS=5 bash 05-temp/t_9b05deec_chat_repro.sh
+# ④ 修复后自测链（重启 + 上面三步 + 回归用例 AR-203/PI-02/AR-105）
+bash 05-temp/t_9b05deec_selftest.sh
+```
+
+**修复前实测（探针 ①，12 次同一 prompt 调用，2026-10-12 04:18 UTC）**：
+
+```
+selected 非空: 4/12                      # 8/12 返回 {"selected": []}，finish_reason=stop、JSON 合法
+content_len: [16,16,77,16,16,16,71,16,140,71,16,16]     # 16 = '{"selected": []}'
+reasoning_len: [1070,1009,8313,229,1284,334,7237,1688,2219,8239,810,674]
+wall_ms:      [2251,2217,13372,1428,2672,1233,12218,3163,8163,13284,2031,2915]
+```
+
+与测试侧 `03-testing/BUGS.md` BUG-V4-01 的 HTTP 原始取样一致（`total=2/0/0`、`sources=0/2/0`、
+DIAG3 三组 12 次观测 5 次空）。**字面同一份 outline + 同一个问题**，输出在 `{"selected":[]}`
+与 `{"selected":[{...}]}` 之间跳——`temperature=0.0` 也**不保证确定性**（推理型模型
+`deepseek-flash`：judgment 抖动；实测空判定 run 的 reasoning 只有 130–422 tokens，
+命中 run 是 1294–2373 tokens；`took_ms` 2–3s vs 3–20s 的差异同源）。
+
+### 2. 根因（两条，都在检索侧 `pageindex_engine.retrieve()`）
+
+1. **空判定被当作合法终态**：`RETRIEVE_SYSTEM` 明确写着"没有任何相关节点时返回空数组，不要硬凑"，
+   而 outline 当时**只含标题 + 50 字摘要**（且摘要常被截在句中），问题问的细节（口令/编号）
+   在正文里 → 模型频繁认定"目录里查不到 → 空数组"；`retrieve()` 对空数组**既不重试也无兜底**，
+   直接返回 `[]`，且 `extra` 里既无 `message` 也无 `error`（Bugs.md 记录的"静默空结果"正是这条）。
+2. **选中但不可解析被静默丢弃**：`doc_id`/`node_id` 必须在 `doc_index`/树里解析到，否则
+   `for sel in selected:` 里 `continue` 丢弃；全部丢弃时 `results=[]` **同样静默返回 0**
+   （本次修复过程中在 12 次 HTTP 取样里抓到 1 次，见 §4 修复前中间态）。
+
+> 一句话共性：**"LLM 没给出可用节点" 没有被当成失败**，既没有重试、没有降级、也没有可区分的文案。
+
+### 3. 修复（5 个代码/配置文件 + 2 个文档文件，`git diff --stat`）
+
+```
+backend/app/services/pageindex_engine.py | 319 +++++++++++++++++++++++++------
+backend/app/core/config.py               |   3 +
+backend/app/api/search.py                |   6 +
+backend/app/services/rag_engine.py       |   7 +-
+infra/.env.example                       |   3 +
+02-development/DEPLOY.md                 |   1 +      # 重启口径表补 pageindex_engine 行
+02-development/DEV_REPORT.md             |   本段
+```
+
+1. **提高选节点精度（outline 拼装）**：`_outline_lines()` 支持「标题|摘要|区间|**正文开头摘录**」
+   （`OUTLINE_EXCERPT_CHARS=150`），`retrieve()` 侧受 `OUTLINE_BUDGET_CHARS=24000` 总预算约束，
+   超限自动退回旧的「标题+摘要」精简模式（`extra.outline_mode` 可观测）。让模型能**看见**
+   问题所问的细节出现在哪个节点。
+2. **提示词按事实收紧**：`RETRIEVE_SYSTEM` 说明摘录是**截断**的开头（非全文），
+   细节出现在摘录里 → 选它并给高分；细节未覆盖时按**主题**相关选中并给低分；
+   只有"与所有节点主题明显无关"才返回空数组。新增 `RETRIEVE_RETRY_HINT`（仅重试时追加）。
+3. **有限重试**：`PAGEINDEX_RETRIEVE_ATTEMPTS`（默认 3，`settings.pageindex_retrieve_attempts`）——
+   超时/解析失败/**空判定**/**选中但不可解析** 都走同一重试路径（第 2 次起追加纠正提示）。
+4. **确定性词面降级（兜底）**：`_lex_tokens`/`_lexical_rank` 对全部节点按「问题词元在**节点正文**中的
+   覆盖率」打分；重试后仍无可用结果时——
+   - 判为**词面相关**（`matched ≥ 2` 或 `coverage ≥ 0.5`）→ 按覆盖率降序**降级返回**这些节点，
+     `score` 上限 0.30，`metadata.selected_by="lexical_fallback"`、`score_source="lexical_fallback"`、
+     附 `lex_coverage`/`lex_matched`，`extra.fallback` 说明成因；**不再静默空结果**。
+   - 判为**确实无关** → 维持 0 命中（保留 `pageindex 0 命中不回退 ES` 红线与 auto 的 F6 文案）。
+5. **文案区分（OBS-V4-1）**：`extra.empty_reason` + `extra.message` 两个分支——
+   `no_pageindex_docs`（KB 里没有 PageIndex 文档，原文案不变）与
+   `no_node_selected`（"该知识库已有 N 篇 PageIndex 文档，但本次未选中任何相关节点…"）；
+   `api/search.py` 透出 `empty_reason`/`fallback`，`rag_engine` 直接用 engine 给出的区分文案
+   （原来两种成因混在一句「…请换一种问法或确认已上传 PageIndex 索引的文档」里）。
+6. **顺手修 `_renumber()` 编号双点缺陷**：LLM 侧 `n1.1` 被重编号成 `n1..1`（`rel=nid[2:]` 残留前导点），
+   outline 与 `location.node_id` 全带双点；检索按串精确匹配故此前不影响命中，但引用展示/外部引用契约脏。
+   现 `n1.1`/`n1.1.2` 正确；**既有数据的旧编号不改**（`_find_node` 按树内存值匹配，兼容）。
+7. **未改动**：`es_client`、`auto_retrieval` 的 F6 文案常量、显式 mode 的"0 命中不回退 ES"红线、
+   建树链路（`build_tree_index`）。
+
+### 4. 自测证据（全部真实运行，2026-10-12 UTC；脚本/日志在 `05-temp/`，不进 git）
+
+**① 检索 `mode=pageindex` 同 KB 同 query ×12（`05-temp/t_9b05deec_selftest.log`，修复后最终版）**
+
+```
+run   total  took_ms   items 含 PI-TOKEN-7412
+1..12   2     1472,4142,1515,2338,2973,2076,5671,1796,1680,3224,1916,2853    全为 2/2
+==== 命中 12/12（0 命中 0 次）====
+原始 total 序列: 2,2,2,2,2,2,2,2,2,2,2,2      # 修复前测试侧实测 2,0,0 / 0,2,0（1/3）
+```
+每个 run 的 2 条结果都含口令（`metadata.node_id=n1..2`、`selected_by=llm`、`score 0.93–0.95`），
+即测试侧 `case_PI-09` 的 S1/S2/S3 三项（code=0、`total≥1`、含口令）12/12 全满足。
+
+**② 问答 `/chat`（`retrieval_mode=pageindex`）×5**
+
+```
+run  sources  error_events
+1..5    2        0            （sources>=1: 5/5；无 event:error）
+run1 答案：根据参考片段，追溯本次巡检批次时应使用口令 **PI-TOKEN-7412** 定位日志 [1][2]。
+```
+修复前同用例为 `sources=0/2/0` 且 0 来源时发 `event:error`（误导文案）。
+
+**③ 进程内打桩（确定性路径，与 LLM 抖动解耦；`05-temp/t_9b05deec_unit.py` + `_result.json`）**
+
+| 打桩 | 相关查询（本 KB） | 无关查询（kb_pi） |
+|---|---|---|
+| LLM 恒返回 `{"selected": []}` | `total=3`，`selected_by=lexical_fallback`，`lex_coverage=0.632`/`matched=12`，`score≤0.30`，含口令 | `total=0` + `empty_reason=no_node_selected`（文案见 §3.5） |
+| LLM 恒返回不可解析 `doc_id/node_id` | `total=3`（同上降级），`extra.unresolved_selected` 记录原因 | `total=0` + 同上文案 + `llm_error` 说明 |
+
+→ 兜底与 LLM 输出**无关**，因此 12/12 是确定性结论（不是"这次运气好"）。
+
+**④ 回归（改动面内的既有用例，全部 PASS）**
+
+- `case_AR-203`（auto、无关 query、F6 文案③）：`VERDICT=PASS`，`search total=0`、
+  chat `meta.notice` 逐字一致、**无 error 事件** ⇒ 词面裁定没有污染"真正 0 命中"的语义。
+- `case_PI-02`（显式 pageindex 命中）：主查询 `total=1`、`score=0.98`、节点即含口令的 `n1..2`；
+  多问法 5/5 命中（含口令条目 1–2 条）。
+- `case_AR-105`（显式 pageindex 0 命中不回退 ES 红线）：`VERDICT=PASS`，`total=0`、`es_leg_count=0`，
+  「没有 pageindex 文档」文案与 `empty_reason=no_pageindex_docs` 不变。
+
+### 5. 部署（重启加载，无新增组件/端口）
+
+```bash
+bash 05-temp/t_9b05deec_restart.sh     # systemctl --user restart kb-backend-9012 kb-mcp-9100
+```
+- 9012（检索/问答 API）与 9100（MCP，经 `rag_engine` 复用同一 `pageindex_engine`）**两处都已重启**
+  （uvicorn 无 `--reload`；沿用 DEPLOY §5.0 口径，并为 `pageindex_engine.py` 补了该表一行）。
+- 本次**未新增容器/端口/volume**，`SERVER_REGISTRY.md` 无变化（沿用 kb-backend-9012:9012 /
+  kb-mcp-9100:9100 两个既有 systemd user 单元）。
+- 新配置项 `PAGEINDEX_RETRIEVE_ATTEMPTS`（默认 3）已写入 `infra/.env.example`；
+  线上 `infra/.env` 未覆盖该项 → 走代码默认值 3。
+
+### 6. 已知问题 / 风险（如实列出）
+
+1. **残余漏检面**：词面裁定只看字面（CJK 2-gram + 拉丁词）。若问题与文档**同义但无字面重叠**
+   （例如问"机密串"而文档写"口令"），空判定仍会被判为"确实无关"→ 维持 0 命中。
+   彻底解决需要向量/语义通道，而 embedding 模型当前不可用（本卡边界）→ 记为后续项。
+2. **词面降级的分值下限**：降级命中 `score ≤ 0.30` 只是"低置信"标记（`selected_by`/`score_source`
+   可区分），**不可当相关度阈值用**；上层若要区分"LLM 命中"与"降级命中"请读 metadata。
+3. **延迟**：空判定重试最坏 3 次 LLM 调用（每次 `pageindex_retrieve_timeout=60s` 上限）；
+   实测修复后 12 次检索 1.4–5.7s（带摘录后模型更快给出高分判定），未见明显变慢，
+   但**极端抖动下**单次检索上限由 60s 变为 180s —— 若上层有更短超时要求需调
+   `PAGEINDEX_RETRIEVE_ATTEMPTS=1`（退化为"不重试、只降级"）。
+4. **文案变更**：显式 pageindex 的 0 命中文案由旧句改为区分后的新句（OBS-V4-1 的建议项）。
+   测试侧若有断言旧字面（`PI-10` 的 evidence 记录过）需按新文案更新；auto 侧 F6 文案**未改**。
+5. **既有数据的双点编号**：`n1..1` 只在**新建成**的树里被修正；老文档（本 KB 2 篇）仍是旧编号，
+   需要干净编号时对文档执行 `pageindex/rebuild`（本次未动任何既有文档）。
+6. **MCP 侧仍不支持 pageindex**（BUG-V4-02，另卡 `t_21918fb2`）：本修复让它以后能拿到非空结果，
+   但 MCP 工具契约（`search_knowledge` 的 mode 分支）仍需按那张卡补。
+
+### 7. 一句话总结根因
+
+> 推理型模型（`deepseek-flash`）对**同一** prompt 非确定性地返回"空数组/不可解析节点"
+> （实测空判定 8/12），而 `pageindex_engine.retrieve()` 把"LLM 没给出可用节点"当成合法终态
+> ——不重试、不降级、无区分文案，于是同一问题有时 2 条有时 0 条；
+> 现在改为"空判定先做词面相关性裁定 → 有限重试 → 仍不可用则按词面覆盖率**确定性降级返回**，
+> 仅当问题与所有节点主题确实无关时才 0 命中"，并补上"有没有 PageIndex 文档"的文案区分。
+

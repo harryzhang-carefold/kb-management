@@ -32,6 +32,15 @@ BUILD_MAX_TOKENS = 32768     # 建树输出预算：推理型模型（deepseek-f
                              # （实测 484 字文档 1/5 次 finish_reason=length/content=0）
 RETRIEVE_MAX_TOKENS = 8192   # 检索选节点输出预算：同为推理型模型，1024 时实测 1/6 次
                              # finish_reason=length → content 为空 → 空结果（不硬凑的兜底不触发）
+RETRIEVE_ATTEMPTS = 3        # 检索选节点「空判定」重试上限（BUG-V4-01：推理型模型对同一
+                             # prompt 会非确定性地返回 {"selected": []}，temperature=0 亦然；
+                             # 实测同一问题空判率 8/12，重试可显著降低但无法归零 → 另有词面降级）
+LEX_MIN_MATCHED = 2          # 词面降级判「相关」的最小命中问题词元数
+LEX_MIN_COVERAGE = 0.5       # 或问题词元覆盖率下限（短问题兜底：1/1=1.0）
+LEX_SCORE_CHARS = 8000       # 词面打分时单节点取用的正文字符上限
+LEX_MAX_SCORE = 0.30         # 词面降级命中分值上限（与 LLM 判定命中的典型区间区分）
+OUTLINE_BUDGET_CHARS = 24000  # outline 总字符预算（≈6k tokens）；超限则退回「标题+摘要」精简模式
+OUTLINE_EXCERPT_CHARS = 150   # outline 每节点附带的正文开头摘录长度（预算内才带）
 MAX_OUTLINE_DOCS = 50        # 单次检索参与推理的文档数上限（R5）
 MAX_CONTENT_CHARS = 3000     # 单节点引用原文截断
 MAX_NODES = 100              # 节点数上限
@@ -64,14 +73,23 @@ BUILD_USER = """请为以下文档生成树索引 JSON。
 {full_text}
 <<<DOC_END>>>"""
 
-RETRIEVE_SYSTEM = """你是知识库检索器。给定多个文档的树索引目录（含 doc_id、节点编号、标题、摘要、字符区间）
-和一个用户问题，选出最相关的节点。
+RETRIEVE_SYSTEM = """你是知识库检索器。给定多个文档的树索引目录（含 doc_id、节点编号、标题、摘要、字符区间，
+部分节点附有正文开头「摘录」）和一个用户问题，选出最相关的节点。
 严格遵守：
 1. 只从给定节点中选择，node_id 必须原样引用，不得杜撰；
 2. 选 1-{top_n} 个节点，按相关度降序；
 3. 每个节点给出 relevance 分数（0-1 之间的小数，两位）；
-4. 没有任何相关节点时返回空数组，不要硬凑；
-5. 只输出 JSON。"""
+4. 摘录是节点正文开头的一小段（**已截断，非全文**）：若问题所问的细节（术语、编号、
+   口令、数值等）出现在某节点的摘录里，优先选该节点并给高分（0.6 以上）；
+5. 摘录未覆盖问题细节时，只要问题与某节点的**主题**相关，仍应选中该节点并给出分数
+   （相关性较弱可给低分，如 0.2-0.5），不要因为查不到细节词就返回空数组；
+6. 只有当问题与所有节点的主题都明显无关（例如问的是另一个领域）时才返回空数组；
+7. 只输出 JSON。"""
+
+RETRIEVE_RETRY_HINT = """上一次返回了空数组。请复核上面的目录：摘录只是节点正文的开头一小段
+（已截断），若问题所问的细节出现在某节点摘录里，就选该节点并给高分；否则只要问题与某节点的
+**主题**相关，也应按上述规则选出最相关的 1-{top_n} 个节点（相关性弱可给低分）；
+仅当问题与所有节点主题都明显无关时，才再次返回空数组。仍然只输出 JSON。"""
 
 RETRIEVE_USER = """用户问题：{question}
 
@@ -325,8 +343,20 @@ def _count_nodes(node: dict) -> int:
     return n
 
 
-def _outline_lines(doc_id: str, root: dict) -> list[str]:
-    """把树扁平成 outline 行（每节点一行，≤80 字符；摘要截 50 字）。"""
+def _one_line(text: str, limit: int) -> str:
+    """压成单行并截断（outline 每节点一行的排版约束）。"""
+    return re.sub(r"\s+", " ", (text or "").strip())[:limit]
+
+
+def _outline_lines(doc_id: str, root: dict, full_text: str = "",
+                   excerpt_chars: int = 0) -> list[str]:
+    """把树扁平成 outline 行（每节点一行；摘要截 50 字）。
+
+    excerpt_chars > 0 时额外附「正文开头摘录」：摘要只有 50 字且常被截在句中，
+    选节点时缺少实质信号（BUG-V4-01：问题细节在正文、摘要里查不到 → 模型倾向判空
+    或选错节点）。摘录受调用侧总预算约束（`OUTLINE_BUDGET_CHARS`），超预算时调用方
+    退回 excerpt_chars=0 的精简模式。
+    """
     lines: list[str] = []
 
     def walk(node: dict):
@@ -334,7 +364,12 @@ def _outline_lines(doc_id: str, root: dict) -> list[str]:
         title = (node.get("title") or "").strip().replace("\n", " ")
         summary = (node.get("summary") or "").strip().replace("\n", " ")[:50]
         s, e = node.get("start", 0), node.get("end", 0)
-        lines.append(f"[{nid}] doc={doc_id[:8]} | {title} | {summary} | {s}-{e}")
+        line = f"[{nid}] doc={doc_id[:8]} | {title} | {summary} | {s}-{e}"
+        if excerpt_chars:
+            excerpt = _one_line((full_text or "")[max(0, int(s)):max(0, int(e))], excerpt_chars)
+            if excerpt:
+                line += f" | 摘录: {excerpt}"
+        lines.append(line)
         for c in node.get("children", []):
             walk(c)
 
@@ -373,6 +408,70 @@ def _find_node(root: dict, node_id: str) -> Optional[dict]:
     return None
 
 
+def _walk_nodes(root: dict) -> list[dict]:
+    """前序遍历整棵树的节点（自含顺序：父在子前）。"""
+    out: list[dict] = []
+
+    def walk(node: dict):
+        out.append(node)
+        for c in node.get("children", []):
+            walk(c)
+
+    walk(root)
+    return out
+
+
+def _lex_tokens(text: str) -> set[str]:
+    """词面词元：CJK 连续段的 2-gram + 拉丁/数字词（≥2 字符）。
+
+    仅用于「LLM 判定为空」时判断问题与该 KB 节点文本是否存在实质词面重叠，
+    不参与正常检索排序（正常排序由 LLM 语义判定负责）。
+    """
+    text = (text or "").lower()
+    toks: set[str] = set()
+    for seg in re.findall(r"[\u4e00-\u9fff]+", text):
+        for i in range(len(seg) - 1):
+            toks.add(seg[i:i + 2])
+    for word in re.findall(r"[a-z0-9]{2,}", text):
+        toks.add(word)
+    return toks
+
+
+def _lexical_rank(filtered: list[tuple[Document, dict]],
+                  question: str) -> tuple[list[tuple], bool]:
+    """对全部候选节点按「问题词元在节点正文中的覆盖率」打分，降序返回。
+
+    返回 (ranked, related)：
+      ranked 元素 = (coverage, matched, 节点编号长度, doc, tree, node)（matched=0 的节点不入列）；
+      related = 是否判为「问题与本 KB 的 pageindex 节点实质相关」——
+                matched ≥ LEX_MIN_MATCHED 或 coverage ≥ LEX_MIN_COVERAGE。
+
+    用途（BUG-V4-01）：LLM 返回空数组时区分两种成因 ——
+      related=True  → 判为 LLM 漏检（false empty）→ 按词面降级返回，不静默空结果；
+      related=False → 判为真的无相关节点 → 维持 0 命中（保持既有 0 命中语义与文案）。
+    """
+    q_toks = _lex_tokens(question)
+    ranked: list[tuple] = []
+    if not q_toks:
+        return ranked, False
+    for d, tree in filtered:
+        full_text = d.full_text or ""
+        for node in _walk_nodes(tree["root"]):
+            start = int(node.get("start", 0))
+            end = int(node.get("end", 0))
+            seg = full_text[max(0, start):max(0, end)][:LEX_SCORE_CHARS]
+            matched = len(q_toks & _lex_tokens(seg))
+            if matched <= 0:
+                continue
+            coverage = matched / len(q_toks)
+            ranked.append((coverage, matched, len(str(node.get("node_id", ""))), d, tree, node))
+    # 覆盖率降序 → 命中数降序 → 节点更具体（编号更长）优先（同文档同覆盖率时取更深节点）
+    ranked.sort(key=lambda x: (-x[0], -x[1], -x[2]))
+    related = bool(ranked) and (ranked[0][1] >= LEX_MIN_MATCHED
+                                or ranked[0][0] >= LEX_MIN_COVERAGE)
+    return ranked, related
+
+
 # ----------------------------------------------------------------------
 # 建树
 # ----------------------------------------------------------------------
@@ -386,7 +485,10 @@ def _renumber(node: dict, prefix: str, is_root: bool) -> dict:
     if is_root:
         new_id = prefix
     else:
-        rel = nid[2:] if nid.startswith("n1") else ""
+        # LLM 侧编号形如 n1 / n1.1 / n1.1.2（相对根）。取相对段时**去掉前导点**，
+        # 否则 "n1.1" → rel=".1" → "n1..1"（历史缺陷：outline 与 location.node_id
+        # 出现双点编号；检索按串精确匹配故不影响命中，但引用展示/外部引用契约脏）。
+        rel = nid[2:].lstrip(".") if nid.startswith("n1") else ""
         new_id = f"{prefix}.{rel}" if rel else prefix
     return {
         "node_id": new_id,
@@ -634,6 +736,7 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
         if not filtered:
             # v2 需求 4：对无 pageindex 索引的文档做 pageindex 检索 →
             # 空结果 + 提示，不静默回退 ES
+            extra["empty_reason"] = "no_pageindex_docs"
             extra["message"] = (
                 "该知识库下没有使用 PageIndex 索引的文档"
                 "（上传时需选择 PageIndex 索引方式），请更换检索方式或重新上传文档。")
@@ -644,64 +747,159 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
             filtered = filtered[:MAX_OUTLINE_DOCS]
             extra["docs_considered"] = MAX_OUTLINE_DOCS
 
-        # 2. 拼 outline
-        outline_lines: list[str] = []
+        # 2. 拼 outline（优先带正文摘录；超总预算则退回「标题+摘要」精简模式）
         doc_index: dict[str, tuple[Document, dict]] = {}
         for d, tree in filtered:
             doc_index[str(d.id)] = (d, tree)
-            outline_lines.extend(_outline_lines(str(d.id), tree["root"]))
 
-        # 3. 单次 LLM 联合推理
-        messages = [
+        def _build_outline(with_excerpt: bool) -> list[str]:
+            lines: list[str] = []
+            for d, tree in filtered:
+                lines.extend(_outline_lines(
+                    str(d.id), tree["root"], d.full_text or "",
+                    OUTLINE_EXCERPT_CHARS if with_excerpt else 0))
+            return lines
+
+        outline_lines = _build_outline(True)
+        if len("\n".join(outline_lines)) > OUTLINE_BUDGET_CHARS:
+            outline_lines = _build_outline(False)
+            extra["outline_mode"] = "title_summary"
+        else:
+            extra["outline_mode"] = "with_excerpt"
+        extra["outline_lines"] = len(outline_lines)
+
+        # 3. LLM 联合推理选节点（不可解析/空判定 → 重试 → 词面降级 → 区分文案）
+        #    背景（BUG-V4-01）：推理型模型对**同一** prompt 会非确定性地
+        #      (a) 返回 {"selected": []}（temperature=0 亦然，实测 8/12）；
+        #      (b) 返回无法在本 KB 树中解析的 doc_id/node_id（被全部丢弃 → 同样是 0 命中）。
+        #    旧实现把两者都当合法终态 → 静默 0 命中、无重试、无兜底。现为：
+        #    「可解析结果为空」先做词面相关性裁定，再决定重试 / 词面降级 / 维持 0 命中。
+        def _postprocess(selected_items: list[dict]) -> tuple[list[dict], list[dict]]:
+            """把 LLM 的选择转成结果；返回 (results, unresolved)。"""
+            out: list[dict] = []
+            bad: list[dict] = []
+            seen = set()
+            for sel in selected_items:
+                if not isinstance(sel, dict):
+                    continue
+                doc_id = str(sel.get("doc_id", ""))
+                node_id = str(sel.get("node_id", ""))
+                relevance = sel.get("relevance", 0.0)
+                try:
+                    relevance = float(relevance)
+                except (TypeError, ValueError):
+                    relevance = 0.0
+                relevance = max(0.0, min(1.0, relevance))
+                hit = doc_index.get(doc_id)
+                if not hit:
+                    # doc_id 可能是短前缀（outline 里是 doc={8位}）
+                    for k in doc_index:
+                        if k.startswith(doc_id):
+                            hit = doc_index[k]
+                            doc_id = k
+                            break
+                if not hit:
+                    bad.append({"doc_id": doc_id, "node_id": node_id, "reason": "doc_id_unknown"})
+                    continue
+                d, tree = hit
+                node = _find_node(tree["root"], node_id)
+                if not node:
+                    bad.append({"doc_id": doc_id, "node_id": node_id, "reason": "node_id_unknown"})
+                    continue
+                key = (doc_id, node_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(_build_result(d, tree, node, relevance))
+            out.sort(key=lambda r: r["score"], reverse=True)
+            return out[:top_n], bad
+
+        base_messages = [
             {"role": "system", "content": RETRIEVE_SYSTEM.format(top_n=top_n)},
             {"role": "user", "content": RETRIEVE_USER.format(
                 question=question, outline_lines="\n".join(outline_lines))},
         ]
-        raw = llm_client.chat(
-            messages, temperature=0.0, max_tokens=RETRIEVE_MAX_TOKENS,
-            timeout=settings.pageindex_retrieve_timeout, json_mode=True,
-        )
-        data = _extract_json(raw)
-        selected = data.get("selected", []) if isinstance(data, dict) else []
-        if not isinstance(selected, list):
-            selected = []
-
-        # 4. 结果后处理（设计 §3.2）
+        attempts_cfg = max(1, int(settings.pageindex_retrieve_attempts or RETRIEVE_ATTEMPTS))
         results: list[dict] = []
-        seen = set()
-        for sel in selected:
-            if not isinstance(sel, dict):
-                continue
-            doc_id = str(sel.get("doc_id", ""))
-            node_id = str(sel.get("node_id", ""))
-            relevance = sel.get("relevance", 0.0)
+        selected: list[dict] = []
+        unresolved: list[dict] = []
+        lex_ranked: list[tuple] = []
+        lex_related = False
+        llm_error: Optional[str] = None
+        attempts_used = 0
+        for attempt in range(1, attempts_cfg + 1):
+            attempts_used = attempt
+            messages = list(base_messages)
+            if attempt > 1:
+                messages.append({"role": "user",
+                                 "content": RETRIEVE_RETRY_HINT.format(top_n=top_n)})
             try:
-                relevance = float(relevance)
-            except (TypeError, ValueError):
-                relevance = 0.0
-            relevance = max(0.0, min(1.0, relevance))
-            hit = doc_index.get(doc_id)
-            if not hit:
-                # doc_id 可能是短前缀（outline 里是 doc={8位}）
-                for k in doc_index:
-                    if k.startswith(doc_id):
-                        hit = doc_index[k]
-                        doc_id = k
-                        break
-            if not hit:
-                continue
-            d, tree = hit
-            node = _find_node(tree["root"], node_id)
-            if not node:
-                continue
-            key = (doc_id, node_id)
-            if key in seen:
-                continue
-            seen.add(key)
-            results.append(_build_result(d, tree, node, relevance))
+                raw = llm_client.chat(
+                    messages, temperature=0.0, max_tokens=RETRIEVE_MAX_TOKENS,
+                    timeout=settings.pageindex_retrieve_timeout, json_mode=True,
+                )
+                data = _extract_json(raw)
+                sel = data.get("selected", []) if isinstance(data, dict) else []
+                selected = [s for s in sel if isinstance(s, dict)] if isinstance(sel, list) else []
+                llm_error = None
+                results, unresolved = _postprocess(selected)
+                if selected and not results:
+                    # 选中了但一个都解析不出来（doc_id/node_id 不可用）→ 记为无效尝试
+                    llm_error = (f"LLM 选中的 {len(unresolved)} 个节点无法在本 KB 树中解析"
+                                 f"（{unresolved[:3]}）")
+                    logger.warning(f"[pageindex] attempt {attempt}/{attempts_cfg} "
+                                   f"选中但不可解析 kb={kb_id}: {unresolved[:3]}")
+            except Exception as exc:  # 超时/网络/解析失败 → 与「空判定」同一重试路径
+                selected, results, unresolved = [], [], []
+                llm_error = str(exc)
+                logger.warning(f"[pageindex] retrieve attempt {attempt}/{attempts_cfg} "
+                               f"失败 kb={kb_id}: {exc}")
+            if results:
+                break
+            # 无可用结果：先裁定词面相关性（每次检索只算一次）
+            if not lex_ranked:
+                lex_ranked, lex_related = _lexical_rank(filtered, question)
+            if not lex_related:
+                # 问题与所有节点主题都无关 → 不再重试（保持既有 0 命中语义与 auto F6 文案）
+                break
 
-        results.sort(key=lambda r: r["score"], reverse=True)
-        results = results[:top_n]
+        extra["attempts"] = attempts_used
+        extra["llm_empty"] = not selected
+        if unresolved:
+            extra["unresolved_selected"] = unresolved[:5]
+        if llm_error:
+            extra["llm_error"] = llm_error
+
+        # 4. 无可用结果：词面相关 → 降级返回（不漏检）；确实无关 → 0 命中 + 区分文案
+        if not results:
+            if lex_related:
+                fallback: list[dict] = []
+                for coverage, matched, _nid_len, d, tree, node in lex_ranked[:top_n]:
+                    fallback.append(_build_result(
+                        d, tree, node, min(LEX_MAX_SCORE, round(coverage, 2)),
+                        selected_by="lexical_fallback",
+                        lex_coverage=round(coverage, 3), lex_matched=matched))
+                extra["fallback"] = {
+                    "reason": "llm_empty_but_lexically_related",
+                    "attempts": attempts_used,
+                    "lex_coverage": round(lex_ranked[0][0], 3),
+                    "lex_matched": lex_ranked[0][1],
+                    "llm_error": llm_error,
+                }
+                logger.warning(
+                    f"[pageindex] LLM {attempts_used} 次均无可解析结果但词面相关 → 词面降级 "
+                    f"kb={kb_id} docs={len(filtered)} coverage={lex_ranked[0][0]:.2f} "
+                    f"matched={lex_ranked[0][1]} llm_error={llm_error}")
+                return fallback, int((time.time() - t0) * 1000), extra
+            extra["empty_reason"] = "no_node_selected"
+            extra["message"] = (
+                f"该知识库已有 {len(filtered)} 篇 PageIndex 文档，但本次未选中任何相关节点。"
+                "请换一种问法（树索引对文档标题与小节更敏感），或对相关文档重建 PageIndex 索引。")
+            logger.info(f"[pageindex] 0 命中 kb={kb_id} docs={len(filtered)} "
+                        f"attempts={attempts_used} llm_error={llm_error} reason=no_node_selected")
+            return [], int((time.time() - t0) * 1000), extra
+
+        # 5. 命中：返回结果（结果后处理已在 _postprocess 内完成，含排序与截断）
         return results, int((time.time() - t0) * 1000), extra
     except Exception as e:
         logger.error(f"[pageindex] retrieve failed kb={kb_id}: {e}")
@@ -726,9 +924,12 @@ def _first_chunk_anchor(db, document: Document) -> tuple:
     return str(first.id), first.chunk_index
 
 
-def _build_result(doc: Document, tree: dict, node: dict, relevance: float) -> dict:
+def _build_result(doc: Document, tree: dict, node: dict, relevance: float,
+                  selected_by: str = "llm", lex_coverage: Optional[float] = None,
+                  lex_matched: Optional[int] = None) -> dict:
     """把选中节点转成 sources 兼容结果（设计 §4.2）。
 
+    selected_by: "llm"（LLM 语义判定命中）/ "lexical_fallback"（LLM 判空后的词面降级命中）。
     注意：retrieve 内已持有 db；此函数通过全局 SessionLocal 查 chunk 锚点
     （独立短会话，避免跨会话访问 ORM 对象）。
     """
@@ -742,8 +943,12 @@ def _build_result(doc: Document, tree: dict, node: dict, relevance: float) -> di
         "char_start": start,
         "char_end": end,
         "truncated": False,
-        "score_source": "llm_relevance",
+        "score_source": "llm_relevance" if selected_by == "llm" else "lexical_fallback",
+        "selected_by": selected_by,
     }
+    if lex_coverage is not None:
+        metadata["lex_coverage"] = lex_coverage
+        metadata["lex_matched"] = lex_matched
     # R8：越界节点丢弃标记
     if start < 0 or end > len(full_text) or end <= start:
         metadata["stale"] = True

@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     pageindex_llm_model: str = "deepseek-flash"  # 建树/检索推理专用模型（复用 llm_base_url/api_key）
     pageindex_build_timeout: int = 300    # 建树单次 LLM 调用超时（秒）
     pageindex_retrieve_timeout: int = 60  # 检索推理单次 LLM 调用超时（秒）
+    pageindex_retrieve_attempts: int = 3  # 检索选节点「空判定」重试上限（BUG-V4-01：
+                                          # 推理型模型对同一 prompt 非确定性返回空数组，
+                                          # 空判定先做词面相关性裁定，再做有限重试）
 
     # ---- 知识库引用（kb citations, V2）----
     kb_view_token_minutes: int = 15          # view_token 有效期（分钟）
