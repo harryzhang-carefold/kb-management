@@ -1,0 +1,17 @@
+[legacy_audit] wrote /home/harry.zhang/kb-management/03-testing/evidence/PI-V3_legacy_docs.tsv
+[legacy_audit] wrote /home/harry.zhang/kb-management/03-testing/evidence/PI-V3_legacy_audit.json
+[totals] all_live_docs=117 legacy_scope=89 pre_change_scope=55
+[index_type all] {'<none>': 2, 'embedding': 81, 'pageindex': 34}
+[index_type legacy] {'embedding': 60, 'pageindex': 29}
+[status_by_index_type all] {'<none->embedding兜底>': {'indexed': 2}, 'embedding': {'failed': 39, 'indexed': 42}, 'pageindex': {'failed': 1, 'indexed': 33}}
+[status_by_index_type legacy] {'embedding': {'failed': 35, 'indexed': 25}, 'pageindex': {'failed': 1, 'indexed': 28}}
+[tree_presence all] {'<none->embedding兜底>': {'tree=False': 2}, 'embedding': {'tree=False': 81}, 'pageindex': {'tree=False': 1, 'tree=True': 33}}
+[uploaded_at all] {'min': '2026-10-10T08:41:43.086267+00:00', 'max': '2026-10-12T03:46:39.680423+00:00'}
+[uploaded_at legacy] {'min': '2026-10-10T08:41:43.086267+00:00', 'max': '2026-10-12T03:13:51.209550+00:00'}
+[kb grouping] {'business_kb_count': 1, 'test_kb_count': 51, 'business_docs': 3, 'test_docs': 114, 'docs_in_deleted_kb': 73, 'docs_in_live_kb': 44, 'note': 'kb_deleted=true 的文档只能做只读审计；用例 5 的行为性操作(重建索引)只允许落在 live KB'}
+[ASSERT A1_legacy_embedding_no_tree] PASS 存量集合中 index_type==embedding 的文档没有任何 pageindex_tree violations=0
+[ASSERT A2_no_illegal_index_type] PASS 不存在 index_type 取值非法（既非 embedding 也非 pageindex）的文档 violations=0
+[ASSERT A3_all_scope_variants] PASS 同一断言在（全量 / 存量上界内 / 严格改动前子集）三个口径下均成立
+[ASSERT A4_legacy_embedding_still_chunked] PASS 存量 index_type==embedding 且 status==indexed 的文档仍保有分块（chunk_count>0） violations=0
+[ASSERT A5_no_real_legacy_docs] PASS 真实存量中不存在「无 index_type」文档（<none> 只允许是本卡 PI-07 模拟产物） none_total=2 emulated_by_pi_v3=2 other=0
+[ASSERT OBS1_pageindex_indexed_without_tree] - 观察项（不判 FAIL）：index_type==pageindex 且 status==indexed 但无 tree 的文档数

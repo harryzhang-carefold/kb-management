@@ -1,0 +1,255 @@
+------------------------------------------------------------------------------
+# VI-PI-3（卡 t_bbb32bcf）原始输出合集
+# 生成时间(UTC): 2026-10-12T03:47:53.052137+00:00
+# 说明: 以下为各脚本/探针/测试套件的原始 stdout，未经改写；token 从未落盘。
+------------------------------------------------------------------------------
+
+
+==============================================================================
+## A. 用例4 — case_PI-04_upload_embedding.sh 首次执行原始输出（run2，run1 仅 summary 生成处有 jq 拼装笔误，判定相同）
+==============================================================================
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-04 建自测 KB: 验证-回归-embedding-VI-PI-3-034001 ====
+HTTP_CODE=200 TIME=0.029343s
+[kb] id=13d9130b-5d7c-4421-a217-e28267076d91 name=验证-回归-embedding-VI-PI-3-034001
+==== PI-04 上传 1：显式 index_type=embedding ====
+[req-form] file=@03-testing/fixtures_pi/emb_regression_doc.md ; index_type=embedding（显式）
+[fixture] sha256=ad8bc0fb9722bba8611bdd98c211912420278abaccb1136fe72c0aa790dbf51d
+HTTP_CODE=200 TIME=0.036308s
+[upload-emb] {"code":0,"message":"ok","data":{"document_id":"ea40d0c5-c1b8-4059-b3c6-ec839a85bb47","status":"uploaded","task_id":"729a0edb-98a9-4ec4-8ef5-5f76b6c0c080"}}
+[ids] doc_emb=ea40d0c5-c1b8-4059-b3c6-ec839a85bb47 task=729a0edb-98a9-4ec4-8ef5-5f76b6c0c080
+[A1] PASS  上传 1 HTTP/业务码  (expected=0 actual=0)
+==== PI-04 轮询 doc_emb（间隔 5s，上限 300s）====
+[poll 1] t=5s status=parsed index_type=embedding
+[poll 2] t=10s status=indexed index_type=embedding
+{"code":0,"status":"indexed","chunk_count":1,"index_type":"embedding","pageindex_status":"<absent>","has_tree":false,"meta_keys":["index_type","parse_engine","parsed_at","source_name","source_type"]}
+[A2] PASS  meta.index_type 为 embedding  (expected=embedding actual=embedding)
+[A3a] PASS  doc.status 为 indexed  (expected=indexed actual=indexed)
+[A3b] PASS  chunk_count > 0（actual=1）  (expected=gt0 actual=gt0)
+[A4a] PASS  meta 不含 pageindex_tree  (expected=false actual=false)
+[A4b] PASS  pageindex_status 不存在或 != ok（actual=<absent>）  (expected=notok actual=notok)
+==== PI-04 检索 A5/A6：vector + hybrid ====
+[search-vector] HTTP_CODE=200 TIME=0.045455s
+[search-vector] total=1 命中条目=1 items=[{"filename":"emb_regression_doc.md","score":0.77291375,"match_type":"vector","has_token":true}]
+[A5] PASS  search mode=vector (total=1 hit=1)
+[search-hybrid] HTTP_CODE=200 TIME=0.050486s
+[search-hybrid] total=1 命中条目=1 items=[{"filename":"emb_regression_doc.md","score":0.032787,"match_type":"hybrid","has_token":true}]
+[A6] PASS  search mode=hybrid (total=1 hit=1)
+==== PI-04 对照 A7：同一 KB 显式 index_type=pageindex 上传同一文档 ====
+HTTP_CODE=200 TIME=0.037688s
+[ids] doc_pi=edd5c93e-a9c2-4736-b233-a82c72e7cce3
+[poll-pi 1] t=5s status=parsing pageindex_status=
+[poll-pi 2] t=10s status=indexed pageindex_status=ok
+{"code":0,"status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","has_tree":true,"node_count":2}
+[A7a] PASS  对照文档 meta.index_type 为 pageindex  (expected=pageindex actual=pageindex)
+[A7b] PASS  对照文档 pageindex_status 为 ok  (expected=ok actual=ok)
+==== PI-04 DONE  verdict=PASS fails=0  kb=13d9130b-5d7c-4421-a217-e28267076d91 ====
+[summary] 03-testing/evidence/raw/PI-04_result.json
+
+
+==============================================================================
+## B. 用例4 — KE 回归对照 tests/e2e_test.py 原始输出
+==============================================================================
+
+==================================================
+📍 1. Health Check
+==================================================
+{
+  "status": "degraded",
+  "services": {
+    "postgresql": "ok",
+    "elasticsearch": "green",
+    "minio": "ok",
+    "redis": "ok",
+    "llm": "ok",
+    "embedding": "ok",
+    "mineru": "unreachable"
+  },
+  "version": "1.0.0"
+}
+
+==================================================
+📍 2. Login (admin/Admin@123)
+==================================================
+✅ Login OK, user=admin
+
+==================================================
+📍 3. Create Knowledge Base
+==================================================
+✅ KB created: 58ee6273-0105-4cdc-bff2-2894ee26b6d2
+
+==================================================
+📍 4. Upload TXT document (explicit index_type=embedding)
+==================================================
+✅ Uploaded: doc=fc66077d-71f4-4d9f-9728-1caa1dd09d73 task=464786d5-1194-4d03-9b3b-6fc5332164e5
+
+==================================================
+📍 5. Poll document processing (max 60s)
+==================================================
+  [1] status=indexed task=success
+✅ Final status: indexed
+
+==================================================
+📍 6. Hybrid Search: '部署需要哪些组件'
+==================================================
+✅ Found 1 results, took 12ms
+  [hybrid] score=0.0328 知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语...
+
+==================================================
+📍 7. RAG Chat (SSE stream): '如何部署这个系统？'
+==================================================
+  HTTP 200
+  ✅ done: {'token_count': 77, 'finish_reason': 'stop'}
+
+  回答(167 chars): 根据知识库中的信息：
+
+**部署该系统需要以下四个基础设施组件** [1]：
+
+- **PostgreSQL**
+- **Elasticsearch**
+- **MinIO**
+- **Redis**
+
+参考片段 [1] 仅说明了所需的组件，**知识库中未找到**具体的部署步骤（如安装顺序、配置参数、启动命令、环境变量等）相关内容。...
+  来源: 1 个片段
+
+==================================================
+📍 8. List conversations
+==================================================
+✅ 1 conversation(s)
+
+==================================================
+🎉 E2E TEST PASSED — 全部 8 步通过
+==================================================
+
+
+==============================================================================
+## C. 用例5 步骤4 — 存量只读审计 legacy_audit.py 原始输出（首次执行）
+==============================================================================
+[legacy_audit] wrote /home/harry.zhang/kb-management/03-testing/evidence/PI-V3_legacy_docs.tsv
+[legacy_audit] wrote /home/harry.zhang/kb-management/03-testing/evidence/PI-V3_legacy_audit.json
+[totals] all_live_docs=117 legacy_scope=89 pre_change_scope=55
+[index_type all] {'<none>': 2, 'embedding': 81, 'pageindex': 34}
+[index_type legacy] {'embedding': 60, 'pageindex': 29}
+[status_by_index_type all] {'<none->embedding兜底>': {'indexed': 2}, 'embedding': {'failed': 39, 'indexed': 42}, 'pageindex': {'failed': 1, 'indexed': 33}}
+[status_by_index_type legacy] {'embedding': {'failed': 35, 'indexed': 25}, 'pageindex': {'failed': 1, 'indexed': 28}}
+[tree_presence all] {'<none->embedding兜底>': {'tree=False': 2}, 'embedding': {'tree=False': 81}, 'pageindex': {'tree=False': 1, 'tree=True': 33}}
+[uploaded_at all] {'min': '2026-10-10T08:41:43.086267+00:00', 'max': '2026-10-12T03:46:39.680423+00:00'}
+[uploaded_at legacy] {'min': '2026-10-10T08:41:43.086267+00:00', 'max': '2026-10-12T03:13:51.209550+00:00'}
+[kb grouping] {'business_kb_count': 1, 'test_kb_count': 51, 'business_docs': 3, 'test_docs': 114, 'docs_in_deleted_kb': 73, 'docs_in_live_kb': 44, 'note': 'kb_deleted=true 的文档只能做只读审计；用例 5 的行为性操作(重建索引)只允许落在 live KB'}
+[ASSERT A1_legacy_embedding_no_tree] PASS 存量集合中 index_type==embedding 的文档没有任何 pageindex_tree violations=0
+[ASSERT A2_no_illegal_index_type] PASS 不存在 index_type 取值非法（既非 embedding 也非 pageindex）的文档 violations=0
+[ASSERT A3_all_scope_variants] PASS 同一断言在（全量 / 存量上界内 / 严格改动前子集）三个口径下均成立
+[ASSERT A4_legacy_embedding_still_chunked] PASS 存量 index_type==embedding 且 status==indexed 的文档仍保有分块（chunk_count>0） violations=0
+[ASSERT A5_no_real_legacy_docs] PASS 真实存量中不存在「无 index_type」文档（<none> 只允许是本卡 PI-07 模拟产物） none_total=2 emulated_by_pi_v3=2 other=0
+[ASSERT OBS1_pageindex_indexed_without_tree] - 观察项（不判 FAIL）：index_type==pageindex 且 status==indexed 但无 tree 的文档数
+
+
+==============================================================================
+## D. 用例5 步骤5 — case_PI-06_reindex_legacy_embedding.sh 首次执行原始输出（run2；run1 因样本 KB 已软删 404，已换 live KH 样本）
+==============================================================================
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-06 前置状态（只读）====
+HTTP_CODE=200
+HTTP_CODE=200
+[pre S-EMB] {"file":"test.txt","status":"indexed","chunk_count":1,"index_type":"embedding","has_tree":false,"uploaded_at":"2026-10-12T03:12:53.953505"}
+[pre S-PI ] {"file":"t_7f451c5f_ui_doc.md","status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","has_tree":true}
+DOC 99c37b1e-7183-4b1b-902d-e22c9070db82 file=test.txt status=indexed chunk_count=1 index_type=embedding pi_status=None has_tree=False up=2026-10-12 03:12:53.953505
+  chunk_rows_total=2
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'
+==== PI-06 B1: 存量 embedding 文档 reindex ====
+HTTP_CODE=200 TIME=0.034625s
+{"code":0,"message":"ok","data":{"task_id":"bedffb22-111e-4f26-aa60-648f2f0d888d","index_type":"embedding"}}
+[B1] PASS  reindex 响应 data.index_type 为 embedding（兜底分流）  (expected=embedding actual=embedding)
+==== PI-06 B2: 同文档 pageindex/rebuild 应被拒绝 ====
+HTTP_CODE=400 TIME=0.012844s
+{"code":40001,"message":"该文档不是 PageIndex 索引方式，请使用“重建索引”按文档索引方式执行","data":null}
+[B2a] PASS  pageindex/rebuild 返回 HTTP 400  (expected=400 actual=400)
+[B2b] PASS  错误信息含「不是 PageIndex 索引方式」  (expected=yes actual=yes)
+==== PI-06 B3: 轮询重建后的存量 embedding 文档 ====
+[poll-emb 1] t=5s status=embedding index_type=embedding chunk_count=1
+[poll-emb 2] t=10s status=indexed index_type=embedding chunk_count=1
+{"code":0,"status":"indexed","chunk_count":1,"index_type":"embedding","has_tree":false,"error_message":null}
+[B3a] PASS  重建后 status 为 indexed  (expected=indexed actual=indexed)
+[B3b] PASS  重建后 chunk_count > 0（actual=1）  (expected=gt0 actual=gt0)
+[B3c] PASS  重建后 meta.index_type 仍为 embedding（未被改写）  (expected=embedding actual=embedding)
+==== PI-06 B4: 重建后向量检索仍命中该文档既有内容 ====
+HTTP_CODE=200 TIME=0.049423s
+[search-vector] total=3 命中目标文档=3 items=[{"document_id":"99c37b1e-7183-4b1b-902d-e22c9070db82","filename":"test.txt","score":0.957152,"match_type":"vector"},{"document_id":"99c37b1e-7183-4b1b-902d-e22c9070db82","filename":"test.txt","score":0.957152,"match_type":"vector"},{"document_id":"99c37b1e-7183-4b1b-902d-e22c9070db82","filename":"test.txt","score":0.957152,"match_type":"vector"}]
+[B4] PASS  search mode=vector (total=3 hit=3)
+DOC 99c37b1e-7183-4b1b-902d-e22c9070db82 file=test.txt status=indexed chunk_count=1 index_type=embedding pi_status=None has_tree=False up=2026-10-12 03:12:53.953505
+  chunk_rows_total=3
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'
+==== PI-06 B5: 存量 pageindex 文档 reindex ====
+HTTP_CODE=200 TIME=0.035206s
+{"code":0,"message":"ok","data":{"task_id":"84f44a83-08c6-4657-b078-f5d98089b779","index_type":"pageindex"}}
+[B5a] PASS  存量 pageindex 文档 reindex 响应 index_type 为 pageindex  (expected=pageindex actual=pageindex)
+[poll-pi 1] t=5s status=chunking pageindex_status=building
+[poll-pi 2] t=10s status=chunking pageindex_status=building
+[poll-pi 3] t=15s status=chunking pageindex_status=building
+[poll-pi 4] t=20s status=chunking pageindex_status=building
+[poll-pi 5] t=25s status=indexed pageindex_status=ok
+{"code":0,"status":"indexed","index_type":"pageindex","pageindex_status":"ok","has_tree":true,"node_count":8}
+[B5b] PASS  存量 pageindex 文档重建后 pageindex_status 为 ok  (expected=ok actual=ok)
+[B5c] PASS  存量 pageindex 文档重建后 index_type 仍为 pageindex  (expected=pageindex actual=pageindex)
+==== PI-06 DONE  verdict=PASS fails=0 ====
+[summary] 03-testing/evidence/raw/PI-06_result.json
+
+
+==============================================================================
+## E. 用例5 步骤6 — case_PI-07_legacy_emulated_no_index_type.sh 首次执行原始输出（run2，模拟用例）
+==============================================================================
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-07 建自测 KB（模拟用例，非存量真实数据）: 验证-兜底-legacy-VI-PI-3-034620 ====
+HTTP_CODE=200
+[kb] id=52d96f8c-a5a5-4e49-be3c-d27764223c31 name=验证-兜底-legacy-VI-PI-3-034620
+==== PI-07 上传（显式 embedding）====
+[fixture] sha256=c3257bbe446e14425a9eeeb392041434cb64983595ea41cf8f3195847880b985
+HTTP_CODE=200
+[ids] doc=08aca631-ac36-451b-982e-ca0d05a697d0
+[poll 1] t=5s status=parsed chunk_count=0
+[poll 2] t=10s status=indexed chunk_count=1
+[C1a] PASS  上传后 meta.index_type 为 embedding  (expected=embedding actual=embedding)
+[C1b] PASS  上传后 status 为 indexed  (expected=indexed actual=indexed)
+[C1c] PASS  上传后 chunk_count > 0（actual=1）  (expected=gt0 actual=gt0)
+==== PI-07 C2: 人工删键模拟历史老文档（仅本脚本自建文档）====
+[strip] doc=08aca631-ac36-451b-982e-ca0d05a697d0 kb=52d96f8c-a5a5-4e49-be3c-d27764223c31 file=legacy_no_index_type_doc.md status=indexed
+[strip] meta keys before = ['index_type', 'parse_engine', 'parsed_at', 'source_name', 'source_type']
+[strip] removed index_type='embedding'  受影响行数=1
+[strip] meta keys after  = ['parse_engine', 'parsed_at', 'source_name', 'source_type']
+[strip] 复核 meta->>'index_type' = None（应为 None）
+HTTP_CODE=200
+{"code":0,"status":"indexed","chunk_count":1,"meta":{"parsed_at":"2026-10-12T03:46:21.391461Z","source_name":"legacy_no_index_type_doc.md","source_type":"md","parse_engine":"local"}}
+[C2] PASS  删键后 GET 返回的 meta 不含 index_type（原样返回）  (expected=false actual=false)
+==== PI-07 C3: POST reindex → 兜底分流应为 embedding ★关键 ====
+HTTP_CODE=200 TIME=0.024705s
+{"code":0,"message":"ok","data":{"task_id":"66ed40b4-af5f-486e-b1ac-4e68e95cbebf","index_type":"embedding"}}
+[C3] PASS  reindex 响应 data.index_type 为 embedding（无 index_type 兜底）  (expected=embedding actual=embedding)
+==== PI-07 C4: 轮询 reindex 后的文档 ====
+[poll-r 1] t=5s status=embedding chunk_count=1 index_type=<absent>
+[poll-r 2] t=10s status=indexed chunk_count=1 index_type=<absent>
+[C4a] PASS  reindex 后 status 为 indexed  (expected=indexed actual=indexed)
+[C4b] PASS  reindex 后 chunk_count > 0（actual=1）  (expected=gt0 actual=gt0)
+==== PI-07 C5/C6: 检索兜底文档 ====
+[search-vector] HTTP_CODE=200 TIME=0.049766s
+[search-vector] total=2 命中=2 items=[{"filename":"legacy_no_index_type_doc.md","score":0.6509178,"match_type":"vector","has_token":true},{"filename":"legacy_no_index_type_doc.md","score":0.6509178,"match_type":"vector","has_token":true}]
+[C5] PASS  search mode=vector (total=2 hit=2)
+[search-hybrid] HTTP_CODE=200 TIME=0.054248s
+[search-hybrid] total=2 命中=2 items=[{"filename":"legacy_no_index_type_doc.md","score":0.032787,"match_type":"hybrid","has_token":true},{"filename":"legacy_no_index_type_doc.md","score":0.032258,"match_type":"hybrid","has_token":true}]
+[C6] PASS  search mode=hybrid (total=2 hit=2)
+==== PI-07 C7: 前端代码复核（显示兜底 || 'embedding'）====
+61:          <el-tag size="small" :type="(row.meta?.index_type || 'embedding') === 'pageindex' ? 'danger' : ''">
+62:            {{ (row.meta?.index_type || 'embedding') === 'pageindex' ? 'PageIndex' : 'Embedding' }}
+273:  const it = row.meta?.index_type || 'embedding'
+[vue] 命中行数=3（KbDetailView.vue:61/62 列表标签 + :273 重建索引分流）
+[C7] PASS  前端兜底 grep 命中 3 处
+==== PI-07 C8: MCP 9100 兜底复核（尽力而为，调不通记 NOT-RUN）====
+# MCP 兜底复核尝试：mcp_server.py:100 的 (d.meta or {}).get("index_type","embedding")
+# 时间: 2026-10-12T03:46:32Z  target: http://127.0.0.1:9100
+# 说明: tools/call 完整调用序列与 case_PI-08 归第 4 段（t_2ba41218）；本段只做最小可达性探测。
+GET / -> HTTP_CODE=401
+[C8] NOT-RUN（MCP tools/call 最小调用序列归第 4 段 t_2ba41218；本段以代码复核为准）
+==== PI-07 DONE  verdict=PASS fails=0  kb=52d96f8c-a5a5-4e49-be3c-d27764223c31 doc=08aca631-ac36-451b-982e-ca0d05a697d0 ====
+[summary] 03-testing/evidence/raw/PI-07_result.json

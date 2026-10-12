@@ -1,0 +1,3 @@
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"hybrid\",\n  \"total\": 0,\n  \"took_ms\": 12,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"hybrid\",\n  \"total\": 0,\n  \"took_ms\": 12,\n  \"items\": []\n}"}}}
+

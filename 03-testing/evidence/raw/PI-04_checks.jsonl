@@ -1,0 +1,10 @@
+{"id":"A1","desc":"上传 1 HTTP/业务码","expected":"0","actual":"0","verdict":"PASS"}
+{"id":"A2","desc":"meta.index_type 为 embedding","expected":"embedding","actual":"embedding","verdict":"PASS"}
+{"id":"A3a","desc":"doc.status 为 indexed","expected":"indexed","actual":"indexed","verdict":"PASS"}
+{"id":"A3b","desc":"chunk_count > 0（actual=1）","expected":"gt0","actual":"gt0","verdict":"PASS"}
+{"id":"A4a","desc":"meta 不含 pageindex_tree","expected":"false","actual":"false","verdict":"PASS"}
+{"id":"A4b","desc":"pageindex_status 不存在或 != ok（actual=<absent>）","expected":"notok","actual":"notok","verdict":"PASS"}
+{"id":"A5","desc":"search mode=vector 命中该文件","expected":"total>=1 && 命中>=1","actual":"total=1 hit=1","verdict":"PASS"}
+{"id":"A6","desc":"search mode=hybrid 命中该文件","expected":"total>=1 && 命中>=1","actual":"total=1 hit=1","verdict":"PASS"}
+{"id":"A7a","desc":"对照文档 meta.index_type 为 pageindex","expected":"pageindex","actual":"pageindex","verdict":"PASS"}
+{"id":"A7b","desc":"对照文档 pageindex_status 为 ok","expected":"ok","actual":"ok","verdict":"PASS"}

@@ -1,0 +1,33 @@
+{
+  "case": "PI-09",
+  "verdict": "FAIL",
+  "fails": 2,
+  "kb_id": "22bcb345-8326-479c-958b-51daa2905715",
+  "runs": 3,
+  "runs_with_hits": 1,
+  "runs_zero": 2,
+  "checks": [
+    {
+      "id": "S1-S3-run1",
+      "desc": "pageindex 检索第 1 次：code=0 且 total>=1 且含口令",
+      "expected": "code=0,total>=1,hit>=1",
+      "actual": "code=0,total=2,hit=2",
+      "verdict": "PASS"
+    },
+    {
+      "id": "S1-S3-run2",
+      "desc": "pageindex 检索第 2 次：code=0 且 total>=1 且含口令",
+      "expected": "code=0,total>=1,hit>=1",
+      "actual": "code=0,total=0,hit=0",
+      "verdict": "FAIL"
+    },
+    {
+      "id": "S1-S3-run3",
+      "desc": "pageindex 检索第 3 次：code=0 且 total>=1 且含口令",
+      "expected": "code=0,total>=1,hit>=1",
+      "actual": "code=0,total=0,hit=0",
+      "verdict": "FAIL"
+    }
+  ],
+  "generated_at": "2026-10-12T04:07:03Z"
+}

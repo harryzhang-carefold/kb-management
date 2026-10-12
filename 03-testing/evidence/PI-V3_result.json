@@ -1,0 +1,451 @@
+{
+  "batch": "VI-PI-3",
+  "task": "t_bbb32bcf",
+  "title": "用例4（显式 embedding 上传回归）+ 用例5（存量/无 index_type 兜底不受影响）",
+  "generated_at": "2026-10-12T03:47:53.051593+00:00",
+  "verdict": "PASS",
+  "fails": 0,
+  "not_run": 1,
+  "cases": {
+    "case4": {
+      "verdict": "PASS",
+      "fails": 0
+    },
+    "case5_step4_legacy_audit": {
+      "verdict": "PASS",
+      "assertions": {
+        "A1_legacy_embedding_no_tree": "PASS",
+        "A2_no_illegal_index_type": "PASS",
+        "A3_all_scope_variants": "PASS",
+        "A4_legacy_embedding_still_chunked": "PASS",
+        "A5_no_real_legacy_docs": "PASS",
+        "OBS1_pageindex_indexed_without_tree": null
+      }
+    },
+    "case5_step5_real_reindex": {
+      "verdict": "PASS",
+      "fails": 0
+    },
+    "case5_step6_emulated_no_index_type": {
+      "verdict": "PASS",
+      "fails": 0,
+      "simulated": true,
+      "note": "模拟用例：真实存量为 0 篇无 index_type 文档（见 PI-V3_legacy_audit.json），本卡为人工删键复现"
+    },
+    "case4_ke_e2e_control": {
+      "cmd": "cd backend && .venv/bin/python ../tests/e2e_test.py",
+      "log": "evidence/PI-V3_case4_ke_e2e.txt",
+      "verdict": "PASS（脚本自带 8 步全通过，exit 0；含 hybrid 检索 + RAG 问答 sources=1）",
+      "note": "任务书建议的 pytest 形式不适用（该文件是 __main__ 脚本，pytest 收集不到用例），已改为直接执行脚本。"
+    }
+  },
+  "key_numbers": {
+    "legacy_total_docs": 117,
+    "legacy_scope_docs": 89,
+    "pre_change_scope_docs": 55,
+    "legacy_index_type_dist": {
+      "embedding": 60,
+      "pageindex": 29
+    },
+    "all_index_type_dist": {
+      "<none>": 2,
+      "embedding": 81,
+      "pageindex": 34
+    },
+    "status_by_index_type_all": {
+      "<none->embedding兜底>": {
+        "indexed": 2
+      },
+      "embedding": {
+        "failed": 39,
+        "indexed": 42
+      },
+      "pageindex": {
+        "failed": 1,
+        "indexed": 33
+      }
+    },
+    "tree_presence_by_index_type_all": {
+      "<none->embedding兜底>": {
+        "tree=False": 2
+      },
+      "embedding": {
+        "tree=False": 81
+      },
+      "pageindex": {
+        "tree=False": 1,
+        "tree=True": 33
+      }
+    },
+    "uploaded_at_range_all": {
+      "min": "2026-10-10T08:41:43.086267+00:00",
+      "max": "2026-10-12T03:46:39.680423+00:00"
+    },
+    "uploaded_at_range_legacy": {
+      "min": "2026-10-10T08:41:43.086267+00:00",
+      "max": "2026-10-12T03:13:51.209550+00:00"
+    },
+    "kb_grouping_summary": {
+      "business_kb_count": 1,
+      "test_kb_count": 51,
+      "business_docs": 3,
+      "test_docs": 114,
+      "docs_in_deleted_kb": 73,
+      "docs_in_live_kb": 44,
+      "note": "kb_deleted=true 的文档只能做只读审计；用例 5 的行为性操作(重建索引)只允许落在 live KB"
+    },
+    "num_docs_without_index_type": 2,
+    "live_legacy_samples": {
+      "pageindex": 3,
+      "embedding": 2
+    },
+    "case4_kb": "13d9130b-5d7c-4421-a217-e28267076d91",
+    "case4_doc_embedding": "ea40d0c5-c1b8-4059-b3c6-ec839a85bb47",
+    "case4_doc_pageindex_control": "edd5c93e-a9c2-4736-b233-a82c72e7cce3",
+    "case6_sample_embedding": {
+      "kb": "f380d232-9551-4bee-ad30-7a55606cab21",
+      "doc": "99c37b1e-7183-4b1b-902d-e22c9070db82"
+    },
+    "case6_sample_pageindex": {
+      "kb": "21f3f148-a8b2-404f-9412-7561ac5d6714",
+      "doc": "7b678d3f-1ccf-4883-93d9-549cd932ec19"
+    },
+    "case7_kb": "52d96f8c-a5a5-4e49-be3c-d27764223c31",
+    "case7_doc": "08aca631-ac36-451b-982e-ca0d05a697d0",
+    "case7_vue_fallback_hits": 3
+  },
+  "checks": [
+    {
+      "case": "PI-04",
+      "id": "A1",
+      "desc": "上传 1 HTTP/业务码",
+      "expected": "0",
+      "actual": "0",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A2",
+      "desc": "meta.index_type 为 embedding",
+      "expected": "embedding",
+      "actual": "embedding",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A3a",
+      "desc": "doc.status 为 indexed",
+      "expected": "indexed",
+      "actual": "indexed",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A3b",
+      "desc": "chunk_count > 0（actual=1）",
+      "expected": "gt0",
+      "actual": "gt0",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A4a",
+      "desc": "meta 不含 pageindex_tree",
+      "expected": "false",
+      "actual": "false",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A4b",
+      "desc": "pageindex_status 不存在或 != ok（actual=<absent>）",
+      "expected": "notok",
+      "actual": "notok",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A5",
+      "desc": "search mode=vector 命中该文件",
+      "expected": "total>=1 && 命中>=1",
+      "actual": "total=1 hit=1",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A6",
+      "desc": "search mode=hybrid 命中该文件",
+      "expected": "total>=1 && 命中>=1",
+      "actual": "total=1 hit=1",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A7a",
+      "desc": "对照文档 meta.index_type 为 pageindex",
+      "expected": "pageindex",
+      "actual": "pageindex",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-04",
+      "id": "A7b",
+      "desc": "对照文档 pageindex_status 为 ok",
+      "expected": "ok",
+      "actual": "ok",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B1",
+      "desc": "reindex 响应 data.index_type 为 embedding（兜底分流）",
+      "expected": "embedding",
+      "actual": "embedding",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B2a",
+      "desc": "pageindex/rebuild 返回 HTTP 400",
+      "expected": "400",
+      "actual": "400",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B2b",
+      "desc": "错误信息含「不是 PageIndex 索引方式」",
+      "expected": "yes",
+      "actual": "yes",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B3a",
+      "desc": "重建后 status 为 indexed",
+      "expected": "indexed",
+      "actual": "indexed",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B3b",
+      "desc": "重建后 chunk_count > 0（actual=1）",
+      "expected": "gt0",
+      "actual": "gt0",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B3c",
+      "desc": "重建后 meta.index_type 仍为 embedding（未被改写）",
+      "expected": "embedding",
+      "actual": "embedding",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B4",
+      "desc": "重建后 mode=vector 命中目标文档既有内容",
+      "expected": "total>=1 && 命中目标>=1",
+      "actual": "total=3 hit=3",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B5a",
+      "desc": "存量 pageindex 文档 reindex 响应 index_type 为 pageindex",
+      "expected": "pageindex",
+      "actual": "pageindex",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B5b",
+      "desc": "存量 pageindex 文档重建后 pageindex_status 为 ok",
+      "expected": "ok",
+      "actual": "ok",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-06",
+      "id": "B5c",
+      "desc": "存量 pageindex 文档重建后 index_type 仍为 pageindex",
+      "expected": "pageindex",
+      "actual": "pageindex",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C1a",
+      "desc": "上传后 meta.index_type 为 embedding",
+      "expected": "embedding",
+      "actual": "embedding",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C1b",
+      "desc": "上传后 status 为 indexed",
+      "expected": "indexed",
+      "actual": "indexed",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C1c",
+      "desc": "上传后 chunk_count > 0（actual=1）",
+      "expected": "gt0",
+      "actual": "gt0",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C2",
+      "desc": "删键后 GET 返回的 meta 不含 index_type（原样返回）",
+      "expected": "false",
+      "actual": "false",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C3",
+      "desc": "reindex 响应 data.index_type 为 embedding（无 index_type 兜底）",
+      "expected": "embedding",
+      "actual": "embedding",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C4a",
+      "desc": "reindex 后 status 为 indexed",
+      "expected": "indexed",
+      "actual": "indexed",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C4b",
+      "desc": "reindex 后 chunk_count > 0（actual=1）",
+      "expected": "gt0",
+      "actual": "gt0",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C5",
+      "desc": "search mode=vector 命中兜底文档口令",
+      "expected": "total>=1 && 命中>=1",
+      "actual": "total=2 hit=2",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C6",
+      "desc": "search mode=hybrid 命中兜底文档口令",
+      "expected": "total>=1 && 命中>=1",
+      "actual": "total=2 hit=2",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C7",
+      "desc": "前端显示/分流兜底 || 'embedding' 仍在",
+      "expected": ">=2",
+      "actual": "3",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-07",
+      "id": "C8",
+      "desc": "MCP 9100 list_documents 显示兜底",
+      "expected": "-",
+      "actual": "NOT-RUN（归第4段）",
+      "verdict": "NOT-RUN"
+    },
+    {
+      "case": "PI-05-AUDIT",
+      "id": "A1_legacy_embedding_no_tree",
+      "desc": "存量集合中 index_type==embedding 的文档没有任何 pageindex_tree",
+      "expected": "violations=0",
+      "actual": "violations=0",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-05-AUDIT",
+      "id": "A2_no_illegal_index_type",
+      "desc": "不存在 index_type 取值非法（既非 embedding 也非 pageindex）的文档",
+      "expected": "violations=0",
+      "actual": "violations=0",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-05-AUDIT",
+      "id": "A3_all_scope_variants",
+      "desc": "同一断言在（全量 / 存量上界内 / 严格改动前子集）三个口径下均成立",
+      "expected": "-",
+      "actual": "-",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-05-AUDIT",
+      "id": "A4_legacy_embedding_still_chunked",
+      "desc": "存量 index_type==embedding 且 status==indexed 的文档仍保有分块（chunk_count>0）",
+      "expected": "violations=0",
+      "actual": "violations=0",
+      "verdict": "PASS"
+    },
+    {
+      "case": "PI-05-AUDIT",
+      "id": "A5_no_real_legacy_docs",
+      "desc": "真实存量中不存在「无 index_type」文档（<none> 只允许是本卡 PI-07 模拟产物）",
+      "expected": "非本卡模拟的 <none> 文档数=0",
+      "actual": "none_total=2 本卡模拟=2 其它=0",
+      "verdict": "PASS"
+    }
+  ],
+  "failing_checks": [],
+  "observations": [
+    {
+      "id": "OBS-REINDEX-CHUNK-DUP",
+      "title": "文档级重建索引(embedding 路径)不清理旧分块：PG chunk 行与 ES 文档重复堆积",
+      "evidence": [
+        "evidence/raw/PI-06_chunks_before.txt / PI-06_chunks_after.txt",
+        "evidence/raw/PI-06_search_vector.json"
+      ],
+      "observed": "同一 embedding 文档 reindex 前后：PG chunk_rows 1 → 2 → 3（本次脚本执行 2 次），doc.chunk_count 恒为 1；KB 内 mode=vector 检索 total 同步 1 → 2 → 3，返回 content/score 完全相同的重复条目",
+      "code": "workers/tasks.py chunk_index_task 只 db.add 新 Chunk + es_client.index_chunks(index)，未按 document_id 先删除 PG 旧行 / ES 旧文档；documents.py reindex 亦无清理步骤",
+      "caused_by_this_change": false,
+      "note": "属改动卡 t_7f451c5f 之前的既有实现行为，不作为本卡 PASS/FAIL 依据；建议单独立卡。",
+      "severity_suggestion": "P2（影响「重建索引」语义与检索结果去重）"
+    },
+    {
+      "id": "OBS-KB-SOFTDELETED-COVERAGE",
+      "title": "存量文档多数位于已软删 KB 内：行为性回归只能覆盖 live KB 子集",
+      "evidence": [
+        "evidence/PI-V3_legacy_audit.json → kb_grouping_summary"
+      ],
+      "observed": "全量 117 篇（is_deleted=false 文档）中 73 篇所在 KB 已 is_deleted=true；仅 44 篇在 live KB 内；其中符合「存量上界」且 index_type=pageindex 的 live 样本 3 篇、embedding 2 篇（含本卡行为测试后新增）",
+      "note": "只读审计覆盖全量；行为性操作（重建索引）覆盖 live 子集，报告中需明示覆盖边界。"
+    },
+    {
+      "id": "OBS-STOCK-NO-INDEX-TYPE-ZERO",
+      "title": "真实存量中不存在「无 index_type」文档 → 用例 5 步骤 6 只能做模拟",
+      "evidence": [
+        "evidence/PI-V3_legacy_audit.json → index_type_dist_all",
+        "db_probe legacy = 0 行"
+      ],
+      "observed": "本卡执行 case_PI-07 之前的全量审计：index_type_dist_all 无 <none>（embedding 77 / pageindex 34），db_probe legacy 探针 0 行 → 真实存量中不存在「无 index_type」文档。本卡 PI-07 执行后新出现 2 篇 <none>，全部为本卡自建 KB（验证-兜底-legacy-VI-PI-3-*）内人工删键的模拟文档，见 assertions.A5_no_real_legacy_docs（其它=0）。",
+      "note": "故 case_PI-07 全流程显式标注为模拟用例，不得当作存量真实分布。"
+    }
+  ],
+  "constraints_respected": {
+    "code_unchanged": true,
+    "services_not_restarted": true,
+    "no_real_business_kb_touched": true,
+    "behavioral_ops_scope": "仅历史测试 KB（live）+ 本卡自建 KB",
+    "db_write_scope": "仅 1 处：strip_index_type.py 删除本卡自建文档的 meta.index_type",
+    "no_subcards_created": true,
+    "no_case_2_or_6": true
+  }
+}

@@ -1,0 +1,32 @@
+[PI-08] mcp=http://127.0.0.1:9100/mcp kb_id=22bcb345-8326-479c-958b-51daa2905715 query=PI-TOKEN-7412 modes=[hybrid vector keyword] key_len=48（不打印明文）
+==== PI-08 [run2] 逐 mode 调用 tools/call search_knowledge ====
+--- mode=hybrid : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-hybrid] HTTP_CODE=200 TIME=0.063460s SIZE=8507
+[mcp-hybrid] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-hybrid] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"hybrid\",\n  \"total\": 2,\n  \"took_ms\": 16,\n  \"items\": [\n    {\n      \"chunk_id\": \"2b364a07-d7e6-408a-898f-f8db9a7df0fc\",\n      \"document_id\": \"9c8f8743-5409-413b-87af-567fab0cb7e0\",\n      \"filename\": \"pi_default_doc_embedding.md\",\n      \"chunk_index\
+[P1-hybrid] PASS  JSON-RPC 无 error（mode=hybrid）  (expected=false actual=false)
+[mcp-hybrid] tool-result: {"query":"PI-TOKEN-7412","mode":"hybrid","total":2,"took_ms":16,"error":null}
+[mcp-hybrid] items: [{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":1,"match_type":"hybrid","score":0.032787,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":1},"has_token":true},{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":0,"match_type":"hybrid","score":0.016129,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=0&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":0},"has_token":false}]
+PI08_MODE_hybrid_TOTAL=2
+--- mode=vector : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-vector] HTTP_CODE=200 TIME=0.052405s SIZE=8509
+[mcp-vector] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-vector] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"vector\",\n  \"total\": 2,\n  \"took_ms\": 8,\n  \"items\": [\n    {\n      \"chunk_id\": \"2b364a07-d7e6-408a-898f-f8db9a7df0fc\",\n      \"document_id\": \"9c8f8743-5409-413b-87af-567fab0cb7e0\",\n      \"filename\": \"pi_default_doc_embedding.md\",\n      \"chunk_index\"
+[P1-vector] PASS  JSON-RPC 无 error（mode=vector）  (expected=false actual=false)
+[mcp-vector] tool-result: {"query":"PI-TOKEN-7412","mode":"vector","total":2,"took_ms":8,"error":null}
+[mcp-vector] items: [{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":1,"match_type":"vector","score":0.6690668,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":1},"has_token":true},{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":0,"match_type":"vector","score":0.6159436,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=0&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":0},"has_token":false}]
+PI08_MODE_vector_TOTAL=2
+--- mode=keyword : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-keyword] HTTP_CODE=200 TIME=0.023307s SIZE=4459
+[mcp-keyword] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-keyword] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"keyword\",\n  \"total\": 1,\n  \"took_ms\": 7,\n  \"items\": [\n    {\n      \"chunk_id\": \"2b364a07-d7e6-408a-898f-f8db9a7df0fc\",\n      \"document_id\": \"9c8f8743-5409-413b-87af-567fab0cb7e0\",\n      \"filename\": \"pi_default_doc_embedding.md\",\n      \"chunk_index\
+[P1-keyword] PASS  JSON-RPC 无 error（mode=keyword）  (expected=false actual=false)
+[mcp-keyword] tool-result: {"query":"PI-TOKEN-7412","mode":"keyword","total":1,"took_ms":7,"error":null}
+[mcp-keyword] items: [{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":1,"match_type":"keyword","score":5.3164597,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":1},"has_token":true}]
+PI08_MODE_keyword_TOTAL=1
+==== PI-08 [run2] 汇总 ====
+  hybrid: total=2  docs=["9c8f8743-5409-413b-87af-567fab0cb7e0"]
+  vector: total=2  docs=["9c8f8743-5409-413b-87af-567fab0cb7e0"]
+  keyword: total=1  docs=["9c8f8743-5409-413b-87af-567fab0cb7e0"]
+[PI-08] result -> 03-testing/evidence/PI-V4_raw/PI-08_run2_result.json
+==== PI-08 [run2] DONE ====

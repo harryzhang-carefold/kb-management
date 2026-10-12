@@ -1,0 +1,4 @@
+DOC 99c37b1e-7183-4b1b-902d-e22c9070db82 file=test.txt status=indexed chunk_count=1 index_type=embedding pi_status=None has_tree=False up=2026-10-12 03:12:53.953505
+  chunk_rows_total=3
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'

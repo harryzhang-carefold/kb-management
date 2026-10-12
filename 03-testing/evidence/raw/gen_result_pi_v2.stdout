@@ -1,0 +1,25 @@
+{
+ "case1": "PASS",
+ "case3": "FAIL",
+ "case1_assert": {
+  "A1_上传HTTP200_code0_返回document_id_task_id": true,
+  "A2_meta.index_type==pageindex": true,
+  "A3_meta.pageindex_status==ok": true,
+  "A4_tree.ok_model_nodes>=2_build_ms>0": true,
+  "A5_root为dict含node_id_title_children且0<=start<end<=full_text_chars": true,
+  "A6字面_root.title!=夹具markdown标题": false,
+  "A7_doc.status==indexed": true,
+  "A8_openapi_upload_index_type_default==pageindex": true
+ },
+ "search_assert": {
+  "S1_HTTP200": true,
+  "S2_total>=1": false,
+  "S3_至少一条item.content含PI-TOKEN-7412": false
+ },
+ "chat_assert": {
+  "B1_事件序列含meta->token(多)->sources->done": true,
+  "B2_sources>=1": true,
+  "B3_答案非空且含PI-TOKEN-7412或正确引用片段": true
+ },
+ "obs_sources": 0
+}

@@ -1,0 +1,14 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-09 [PI-V4] 主查询 mode=pageindex top_k=3 × 3 ====
+[run1] HTTP_CODE=200 TIME=3.550949s
+[run1] {"code":0,"total":2,"took_ms":3537,"message":"<none>","error":"<none>","items":[{"document_id":"dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5","node_title":"第2.2节至第4章：班中抽检、附则与术语表","has_token":true},{"document_id":"30691711-1285-4164-be74-6bd38465d622","node_title":"2.2班中抽检与异常上报、第3章附则、第4章术语表","has_token":true}]}
+[run2] HTTP_CODE=200 TIME=2.404857s
+[run2] {"code":0,"total":0,"took_ms":2391,"message":"<none>","error":"<none>","items":[]}
+[run3] HTTP_CODE=200 TIME=2.978514s
+[run3] {"code":0,"total":0,"took_ms":2966,"message":"<none>","error":"<none>","items":[]}
+[PI-09] 命中稳定性: 1/3 次 total>=1（2 次 0 命中）
+==== PI-09 观察项：同文档 mode=hybrid（默认模式）====
+
+HTTP_CODE=200 TIME=0.056867s
+[obs-hybrid] {"code":0,"total":0,"took_ms":14,"items":[]}（已知 P1，与 t_9013e8b2 同源，不判 FAIL）
+==== PI-09 DONE verdict=FAIL fails=2 ====

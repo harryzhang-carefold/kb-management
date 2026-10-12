@@ -1,0 +1,3 @@
+61:          <el-tag size="small" :type="(row.meta?.index_type || 'embedding') === 'pageindex' ? 'danger' : ''">
+62:            {{ (row.meta?.index_type || 'embedding') === 'pageindex' ? 'PageIndex' : 'Embedding' }}
+273:  const it = row.meta?.index_type || 'embedding'

@@ -1,0 +1,33 @@
+{
+  "case": "PI-10",
+  "verdict": "FAIL",
+  "fails": 2,
+  "kb_id": "22bcb345-8326-479c-958b-51daa2905715",
+  "runs": 3,
+  "runs_with_sources": 1,
+  "runs_zero_sources": 2,
+  "checks": [
+    {
+      "id": "B1-B3-run1",
+      "desc": "pageindex 问答第 1 次：sources>=1 且答案非空",
+      "expected": "sources>=1,answer非空",
+      "actual": "sources=0,answer_len=0",
+      "verdict": "FAIL"
+    },
+    {
+      "id": "B1-B3-run2",
+      "desc": "pageindex 问答第 2 次：sources>=1 且答案非空",
+      "expected": "sources>=1,answer非空",
+      "actual": "sources=2,answer_len=89",
+      "verdict": "PASS"
+    },
+    {
+      "id": "B1-B3-run3",
+      "desc": "pageindex 问答第 3 次：sources>=1 且答案非空",
+      "expected": "sources>=1,answer非空",
+      "actual": "sources=0,answer_len=0",
+      "verdict": "FAIL"
+    }
+  ],
+  "generated_at": "2026-10-12T04:07:45Z"
+}

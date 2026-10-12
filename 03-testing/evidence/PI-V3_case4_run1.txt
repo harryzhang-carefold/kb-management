@@ -1,0 +1,38 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-04 建自测 KB: 验证-回归-embedding-VI-PI-3-033943 ====
+HTTP_CODE=200 TIME=0.035735s
+[kb] id=bacc2f2e-bf69-4fc3-a83a-da451523e129 name=验证-回归-embedding-VI-PI-3-033943
+==== PI-04 上传 1：显式 index_type=embedding ====
+[req-form] file=@03-testing/fixtures_pi/emb_regression_doc.md ; index_type=embedding（显式）
+[fixture] sha256=ad8bc0fb9722bba8611bdd98c211912420278abaccb1136fe72c0aa790dbf51d
+HTTP_CODE=200 TIME=0.038812s
+[upload-emb] {"code":0,"message":"ok","data":{"document_id":"fe410615-d82d-407d-a821-510b62b65134","status":"uploaded","task_id":"d949e283-618d-4c22-b24e-8905bf2a44e3"}}
+[ids] doc_emb=fe410615-d82d-407d-a821-510b62b65134 task=d949e283-618d-4c22-b24e-8905bf2a44e3
+[A1] PASS  上传 1 HTTP/业务码  (expected=0 actual=0)
+==== PI-04 轮询 doc_emb（间隔 5s，上限 300s）====
+[poll 1] t=5s status=parsed index_type=embedding
+[poll 2] t=10s status=indexed index_type=embedding
+{"code":0,"status":"indexed","chunk_count":1,"index_type":"embedding","pageindex_status":"<absent>","has_tree":false,"meta_keys":["index_type","parse_engine","parsed_at","source_name","source_type"]}
+[A2] PASS  meta.index_type 为 embedding  (expected=embedding actual=embedding)
+[A3a] PASS  doc.status 为 indexed  (expected=indexed actual=indexed)
+[A3b] PASS  chunk_count > 0（actual=1）  (expected=gt0 actual=gt0)
+[A4a] PASS  meta 不含 pageindex_tree  (expected=false actual=false)
+[A4b] PASS  pageindex_status 不存在或 != ok（actual=<absent>）  (expected=notok actual=notok)
+==== PI-04 检索 A5/A6：vector + hybrid ====
+[search-vector] HTTP_CODE=200 TIME=0.046607s
+[search-vector] total=1 命中条目=1 items=[{"filename":"emb_regression_doc.md","score":0.77291375,"match_type":"vector","has_token":true}]
+[A5] PASS  search mode=vector (total=1 hit=1)
+[search-hybrid] HTTP_CODE=200 TIME=0.056162s
+[search-hybrid] total=1 命中条目=1 items=[{"filename":"emb_regression_doc.md","score":0.032787,"match_type":"hybrid","has_token":true}]
+[A6] PASS  search mode=hybrid (total=1 hit=1)
+==== PI-04 对照 A7：同一 KB 显式 index_type=pageindex 上传同一文档 ====
+HTTP_CODE=200 TIME=0.038865s
+[ids] doc_pi=e8ea6ac5-5917-424e-8e9a-83765de53cd9
+[poll-pi 1] t=5s status=parsed pageindex_status=
+[poll-pi 2] t=10s status=indexed pageindex_status=ok
+{"code":0,"status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","has_tree":true,"node_count":2}
+[A7a] PASS  对照文档 meta.index_type 为 pageindex  (expected=pageindex actual=pageindex)
+[A7b] PASS  对照文档 pageindex_status 为 ok  (expected=ok actual=ok)
+jq: error (at <unknown>): object ({"id":"A1",...) only strings can be parsed
+==== PI-04 DONE  verdict=PASS fails=0  kb=bacc2f2e-bf69-4fc3-a83a-da451523e129 ====
+[summary] 03-testing/evidence/raw/PI-04_result.json

@@ -1,0 +1,3 @@
+{"id":"P1-hybrid","desc":"JSON-RPC 无 error（mode=hybrid）","expected":"false","actual":"false","verdict":"PASS"}
+{"id":"P1-vector","desc":"JSON-RPC 无 error（mode=vector）","expected":"false","actual":"false","verdict":"PASS"}
+{"id":"P1-keyword","desc":"JSON-RPC 无 error（mode=keyword）","expected":"false","actual":"false","verdict":"PASS"}

@@ -1,0 +1,37 @@
+{
+  "case": "PI-08",
+  "run": "run2",
+  "verdict": "PASS",
+  "fails": 0,
+  "kb_id": "22bcb345-8326-479c-958b-51daa2905715",
+  "query": "PI-TOKEN-7412",
+  "totals": {
+    "hybrid": 2,
+    "vector": 2,
+    "keyword": 1
+  },
+  "checks": [
+    {
+      "id": "P1-hybrid",
+      "desc": "JSON-RPC 无 error（mode=hybrid）",
+      "expected": "false",
+      "actual": "false",
+      "verdict": "PASS"
+    },
+    {
+      "id": "P1-vector",
+      "desc": "JSON-RPC 无 error（mode=vector）",
+      "expected": "false",
+      "actual": "false",
+      "verdict": "PASS"
+    },
+    {
+      "id": "P1-keyword",
+      "desc": "JSON-RPC 无 error（mode=keyword）",
+      "expected": "false",
+      "actual": "false",
+      "verdict": "PASS"
+    }
+  ],
+  "generated_at": "2026-10-12T04:08:00Z"
+}

@@ -1,0 +1,29 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== ① 建单文档 KB（API 默认上传，不传 index_type）====
+KB_NEW=4d43c2ef-399d-4fe3-bf08-d0a1d0b8403f
+DOC_NEW=e1ad418a-d3c7-4171-a1fb-49b37fb44156 (请求未含 index_type 字段)
+  [poll 1] status=parsing index_type=pageindex pageindex_status=-
+  [poll 2] status=chunking index_type=pageindex pageindex_status=building
+  [poll 3] status=chunking index_type=pageindex pageindex_status=building
+  [poll 4] status=chunking index_type=pageindex pageindex_status=building
+  [poll 5] status=chunking index_type=pageindex pageindex_status=building
+  [poll 6] status=chunking index_type=pageindex pageindex_status=building
+  [poll 7] status=chunking index_type=pageindex pageindex_status=building
+  [poll 8] status=chunking index_type=pageindex pageindex_status=building
+  [poll 9] status=chunking index_type=pageindex pageindex_status=building
+  [poll 10] status=chunking index_type=pageindex pageindex_status=building
+  [poll 11] status=indexed index_type=pageindex pageindex_status=ok
+==== SINGLE kb=4d43c2ef-399d-4fe3-bf08-d0a1d0b8403f （3 次重复）====
+{"run":1,"code":0,"total":2,"took_ms":4447,"message":"<none>","error":"<none>","titles":["2. 巡检执行流程","1. 适用范围与术语定义"]}
+{"run":2,"code":0,"total":2,"took_ms":2037,"message":"<none>","error":"<none>","titles":["1. 适用范围与术语定义","3. 附则 与 4. 术语表（干扰小节）"]}
+{"run":3,"code":0,"total":3,"took_ms":7277,"message":"<none>","error":"<none>","titles":["1. 适用范围与术语定义","3. 附则 与 4. 术语表（干扰小节）","2. 巡检执行流程"]}
+==== PI4DUP kb=22bcb345-8326-479c-958b-51daa2905715 （3 次重复）====
+{"run":1,"code":0,"total":2,"took_ms":12384,"message":"<none>","error":"<none>","titles":["第1章至2.1节：总则与班前点检","标题、第1章及2.1班前点检"]}
+{"run":2,"code":0,"total":0,"took_ms":2048,"message":"<none>","error":"<none>","titles":[]}
+{"run":3,"code":0,"total":2,"took_ms":20569,"message":"<none>","error":"<none>","titles":["第1章至2.1节：总则与班前点检","标题、第1章及2.1班前点检"]}
+==== PI2REF kb=32b1101f-efd6-467c-900a-255c75656791 （3 次重复）====
+{"run":1,"code":0,"total":0,"took_ms":8551,"message":"<none>","error":"<none>","titles":[]}
+{"run":2,"code":0,"total":0,"took_ms":3137,"message":"<none>","error":"<none>","titles":[]}
+{"run":3,"code":0,"total":2,"took_ms":8247,"message":"<none>","error":"<none>","titles":["班中抽检异常上报、附则与术语表","文档标题、总则与班前点检"]}
+KB_NEW=4d43c2ef-399d-4fe3-bf08-d0a1d0b8403f
+==== DIAG3 DONE ====

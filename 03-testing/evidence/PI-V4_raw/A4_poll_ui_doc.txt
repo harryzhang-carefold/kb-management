@@ -1,0 +1,6 @@
+
+HTTP_CODE=200 TIME=0.017203s
+[poll 1] t=4s status=indexed pageindex_status=ok index_type=pageindex chunk_count=0
+==== A4 最终字段 ====
+{"code":0,"status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok","tree_model":"deepseek-flash","node_count":3,"build_ms":34212,"full_text_chars":776,"root_title":"智能制造产线巡检手册"}
+==== A4 DONE ====

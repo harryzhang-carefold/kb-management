@@ -1,0 +1,348 @@
+================================================================================
+VI-PI-4 (卡 t_2ba41218) — 用例2（线上 UI 默认 pageindex 端到端）
+                       用例6（默认 pageindex 与 MCP 引用链路是否冲突）
+原始输出汇编  生成时间(UTC): 2026-10-12T04:08:45Z
+KB: 22bcb345-8326-479c-958b-51daa2905715  名称: 验证-默认pageindex-VI-PI-4-20261012-035005
+夹具: 03-testing/fixtures_pi/pi_default_doc.md  sha256=11321dc6870f37b6f4ab895937ee4074af6db19a2db607cccb729cd1a809a0a7  口令=PI-TOKEN-7412
+================================================================================
+
+################################################################################
+# A6  线上产物对照（curl 直取 https://agent.carefold.ai/kb-management/）
+################################################################################
+=== A6 线上产物对照 2026-10-12T03:50:15Z ===
+--- GET https://agent.carefold.ai/kb-management/ ---
+HTTP_CODE=200 TIME=0.019166s SIZE=641
+--- index.html 内容 ---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/kb-management/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+    <script type="module" src="/kb-management/assets/index-BHI8vxe6.js"></script>
+    <link rel="modulepreload" href="/kb-management/assets/rolldown-runtime-hePW80VL.js">
+    <link rel="modulepreload" href="/kb-management/assets/user-DkKVsbeg.js">
+    <link rel="stylesheet" href="/kb-management/assets/index-DqZNZhns.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+--- 入口 js 文件名（正则提取 assets/index-*.js）---
+assets/index-BHI8vxe6.js
+ENTRY_JS=assets/index-BHI8vxe6.js
+--- 拉取入口 js 头部 ---
+HTTP_CODE=200 SIZE=861294
+--- 入口 js 引用的 KbDetailView chunk 名 ---
+assets/KbDetailView-CcLfGsq-.js
+KBDETAILVIEW_JS=assets/KbDetailView-CcLfGsq-.js
+HTTP_CODE=200 SIZE=9273
+--- 证据: KbDetailView js 中 indexType 默认值上下文 ---
+--- 证据: 含 pageindex 的最小片段 ---
+(),F=O(),I=x(),L=E.params.id,R=o(null),z=o([]),B=o(!1),V=o(`pageindex`),H=null,U=o(!1),W=o(!1),G=o(`rendered`),K=o({filename:``,f
+v(L,e.id),u.success(`已删除`),Y()}catch{}},Q=e=>{let t=e.meta?.pageindex_status;return!t||t===`none`?``:{building:`建树中`,ok:`已建树`,deg
+ing`,ok:`success`,degraded:`info`,failed:`danger`})[e.meta?.pageindex_status]||`info`,Ce=async e=>{let t=(e.meta?.index_type||`em
+s(`已提交重建索引任务`),Y()}catch{}},$=c(()=>z.value.some(e=>e.meta?.pageindex_status===`building`)),we=e=>e<1024?e+` B`:e<1048576?(e/1024
+=>[...c[7]||=[b(`Embedding（分块+向量）`,-1)]]),_:1}),g(h,{value:`pageindex`},{default:n(()=>[...c[8]||=[b(`PageIndex（树索引）`,-1)]]),_:1}
+g(w,{size:`small`,type:(e.meta?.index_type||`embedding`)===`pageindex`?`danger`:``},{default:n(()=>[b(f((e.meta?.index_type||`emb
+=== A6 DONE ===
+=== A6b 线上 chunk 指纹 ===
+c4c9ff349fd02ec4f7c81f0151f2a2ae97f49c43a33b56ac565f4fb42e538f53  03-testing/evidence/PI-V4_raw/online_KbDetailView.js
+-rw-rw-r-- 1 harry.zhang harry.zhang 9273 Oct 12 03:50 03-testing/evidence/PI-V4_raw/online_KbDetailView.js
+--- (1) indexType 默认值：minified `V=o(\`pageindex\`)` 上下文 ---
+oc-content-text`},F=E(l({__name:`KbDetailView`,setup(l){let E=A(),F=O(),I=x(),L=E.params.id,R=o(null),z=o([]),B=o(!1),V=o(`pageindex`),H=null,U=o(!1),W=o(!1),G=o(`rendered`),K=o({filename:``,file_type:``,content:``,chunk_count:0,meta:{}}),de=c(()=>{let e
+--- (2) radio 标签 Embedding / PageIndex 出现处 ---
+bedding`},{default:n(()=>[...c[7]||=[b(`Embedding（分块+向量）`,-1)]]),_:1}),g(h,{value:`pageindex`},{
+geindex`},{default:n(()=>[...c[8]||=[b(`PageIndex（树索引）`,-1)]]),_:1})]),_:1},8,[`modelValue`]),
+--- (3) 上传请求体里 indexType 的绑定（FormData append）---
+ses/${L}/documents`),pe=c(()=>({Authorization:`Bearer ${I.token}`})),me=c(()=>({index_type:V.value})),he=c(()=>z.value.some(e=>e.status===`parsing`||e.status===`chunking`
+failed:`danger`})[e.meta?.pageindex_status]||`info`,Ce=async e=>{let t=(e.meta?.index_type||`embedding`)===`pageindex`?`PageIndex 树索引（LLM 建树约 30-120s）`:`Embedding 分块+向量索引
+th:`120`,align:`center`},{default:n(({row:e})=>[g(w,{size:`small`,type:(e.meta?.index_type||`embedding`)===`pageindex`?`danger`:``},{default:n(()=>[b(f((e.meta?.index_typ
+--- (4) 源码侧对照（frontend/src/views/KbDetailView.vue）---
+22:        <el-radio-group v-model="indexType">
+26:        <span class="upload-options-desc" v-if="indexType === 'pageindex'">
+133:const indexType = ref<'embedding' | 'pageindex'>('pageindex')
+167:const uploadData = computed(() => ({ index_type: indexType.value }))
+--- 源码 sha256 ---
+836d82c40ddd86f2d9bcc7582b7e43e35f439029ec6790fad322a328235f98ed  frontend/src/views/KbDetailView.vue
+--- (5) 线上 chunk 是否含源码同款模板串 ---
+  literal "Embedding（分块+向量）" -> occurrences=1
+  literal "PageIndex（树索引）" -> occurrences=1
+  literal "无向量、基于层级树" -> occurrences=1
+无向量、基于层级树 + LLM 推理检索；上传后异步建树（约 30-120s），一个文档只建一种索引。 问答与检索时选择「智能」或「PageIndex」模式即可命中本类文档。 
+=== A6b DONE ===
+
+################################################################################
+# A3  线上 UI DOM 取证：默认选中 PageIndex（.el-radio-button 逐个取 is-active / input.checked）
+################################################################################
+{
+ "url": "https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715",
+ "radios": [
+  {
+   "text": "Embedding（分块+向量）",
+   "cls": "el-radio-button",
+   "isActive": false,
+   "inputChecked": false,
+   "inputValue": "embedding"
+  },
+  {
+   "text": "PageIndex（树索引）",
+   "cls": "el-radio-button is-active",
+   "isActive": true,
+   "inputChecked": true,
+   "inputValue": "pageindex"
+  }
+ ],
+ "descs": [
+  {
+   "text": "无向量、基于层级树 + LLM 推理检索；上传后异步建树（约 30-120s），一个文档只建一种索引。 问答与检索时选择「智能」或「PageIndex」模式即可命中本类文档。",
+   "visible": true
+  }
+ ],
+ "ls_token_len": 209
+}
+截图: 03-testing/evidence/PI-V4_ui_default.png（1440x1000，PageIndex 按钮高亮）
+
+################################################################################
+# A4  不点任何 radio，用 CDP DOM.setFileInputFiles 直塞夹具上传
+#     第一次上传：FormData 实际字段 = [index_type=pageindex, file=pi_default_doc.md]，radioClicks=0
+################################################################################
+第二次上传（用于抓「建树中」态）DOM 轮询记录：
+  t=643s rows=[["pi_default_doc.md","PageIndex","已建树\n-","解析中"], [...已索引]]
+  t=645s rows=[["pi_default_doc.md","PageIndex","已建树\n建树中","分块中"], ...]  ← 截图 PI-V4_ui_indexing.png
+  t=675s rows=[["pi_default_doc.md","PageIndex","已建树","已索引"], [...已索引]]
+  window.__fdLog = [["index_type","pageindex"],["file","<file:pi_default_doc.md>"]]  window.__radioClicks = 0
+
+上传后轮询后端（03-testing/evidence/PI-V4_raw/A4_poll_ui_doc.txt）：
+
+HTTP_CODE=200 TIME=0.017203s
+[poll 1] t=4s status=indexed pageindex_status=ok index_type=pageindex chunk_count=0
+==== A4 最终字段 ====
+{"code":0,"status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok","tree_model":"deepseek-flash","node_count":3,"build_ms":34212,"full_text_chars":776,"root_title":"智能制造产线巡检手册"}
+==== A4 DONE ====
+
+第一次 UI 上传的文档最终字段：
+{"code":0,"status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok","tree_model":"deepseek-flash","node_count":3,"build_ms":34212,"full_text_chars":776,"root_title":"智能制造产线巡检手册"}
+
+################################################################################
+# A5-1  pageindex 模式检索（case_PI-09，主查询 ×3）
+################################################################################
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-09 [PI-V4] 主查询 mode=pageindex top_k=3 × 3 ====
+[run1] HTTP_CODE=200 TIME=3.550949s
+[run1] {"code":0,"total":2,"took_ms":3537,"message":"<none>","error":"<none>","items":[{"document_id":"dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5","node_title":"第2.2节至第4章：班中抽检、附则与术语表","has_token":true},{"document_id":"30691711-1285-4164-be74-6bd38465d622","node_title":"2.2班中抽检与异常上报、第3章附则、第4章术语表","has_token":true}]}
+[run2] HTTP_CODE=200 TIME=2.404857s
+[run2] {"code":0,"total":0,"took_ms":2391,"message":"<none>","error":"<none>","items":[]}
+[run3] HTTP_CODE=200 TIME=2.978514s
+[run3] {"code":0,"total":0,"took_ms":2966,"message":"<none>","error":"<none>","items":[]}
+[PI-09] 命中稳定性: 1/3 次 total>=1（2 次 0 命中）
+==== PI-09 观察项：同文档 mode=hybrid（默认模式）====
+
+HTTP_CODE=200 TIME=0.056867s
+[obs-hybrid] {"code":0,"total":0,"took_ms":14,"items":[]}（已知 P1，与 t_9013e8b2 同源，不判 FAIL）
+==== PI-09 DONE verdict=FAIL fails=2 ====
+
+################################################################################
+# A5-2  pageindex 模式问答 SSE（case_PI-10，主查询 ×3 + 默认模式观察项）
+################################################################################
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-10 [PI-V4] 主查询 retrieval_mode=pageindex top_n=3 (SSE) × 3 ====
+[run1] HTTP_CODE=200 TIME=1.526480s
+[run1][headers] HTTP/1.1 200 OK content-type: text/event-stream; charset=utf-8 
+[run1][event-counts]       1 error 
+[run1][sources] 
+[run1][answer] 
+[run1][error-event] {"message": "未检索到相关 PageIndex 内容，请换一种问法或确认已上传 PageIndex 索引的文档。"}
+[run2] HTTP_CODE=200 TIME=18.101445s
+[run2][headers] HTTP/1.1 200 OK content-type: text/event-stream; charset=utf-8 
+[run2][event-counts]       1 done       1 meta       1 sources      51 token 
+[run2][sources] {"sources": [{"chunk_id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5", "document_id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.95, "metadata": {"node_id": "n1..2", "node_title": "第2.2节至第4章：班中抽检、附则与术语表", "char_start": 403, "char_end": 776, "truncated": false, "score_source": "llm_relevance"}}, {"chunk_id": "30691711-1285-4164-be74-6bd38465d622", "document_id": "30691711-1285-4164-be74-6bd38465d622", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.94, "metadata": {"node_id": "n1..2", "node_title": "2.2班中抽检与异常上报、第3章附则、第4章术语表", "char_start": 403, "char_end": 776, "truncated": false, "score_source": "llm_relevance"}}]}
+[run2][answer] 根据参考片段，追溯本次巡检批次时应使用口令 **PI-TOKEN-7412** 定位日志 [1][2]。需注意：该口令仅用于检索定位，不参与任何权限校验与身份识别 [1][2]。
+[run2][error-event] 
+[run3] HTTP_CODE=200 TIME=2.178812s
+[run3][headers] HTTP/1.1 200 OK content-type: text/event-stream; charset=utf-8 
+[run3][event-counts]       1 error 
+[run3][sources] 
+[run3][answer] 
+[run3][error-event] {"message": "未检索到相关 PageIndex 内容，请换一种问法或确认已上传 PageIndex 索引的文档。"}
+[PI-10] sources 稳定性: 1/3 次 sources>=1（2 次 0 来源）
+==== PI-10 观察项：不传 retrieval_mode（走默认模式）====
+
+HTTP_CODE=200 TIME=14.621538s
+[obs-meta] {"conversation_id": "4710cc5a-4632-4c45-a343-1363b05e190b"}
+[obs-sources] {"sources": [{"chunk_id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5", "document_id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.85, "metadata": {"node_id": "n1..1", "node_title": "第1章至2.1节：总则与班前点检", "char_start": 0, "char_end": 403, "truncated": false, "score_source": "llm_relevance", "leg": "pageindex"}}, {"chunk_id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5", "document_id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.62, "metadata": {"node_id": "n1..2", "node_title": "第2.2节至第4章：班中抽检、附则与术语表", "char_start": 403, "char_end": 776, "truncated": false, "score_source": "llm_relevance", "leg": "pageindex"}}]}
+[PI-10-obs] 默认模式 sources=2（已知 P1，与 t_9013e8b2 同源，不判 FAIL）
+==== PI-10 DONE verdict=FAIL fails=2 ====
+
+################################################################################
+# A5-3  pageindex 0 命中隔离实验（DIAG3：单文档 KB / 本 KB 2 篇 / 第 2 段对照 KB）
+################################################################################
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== ① 建单文档 KB（API 默认上传，不传 index_type）====
+KB_NEW=4d43c2ef-399d-4fe3-bf08-d0a1d0b8403f
+DOC_NEW=e1ad418a-d3c7-4171-a1fb-49b37fb44156 (请求未含 index_type 字段)
+  [poll 1] status=parsing index_type=pageindex pageindex_status=-
+  [poll 2] status=chunking index_type=pageindex pageindex_status=building
+  [poll 3] status=chunking index_type=pageindex pageindex_status=building
+  [poll 4] status=chunking index_type=pageindex pageindex_status=building
+  [poll 5] status=chunking index_type=pageindex pageindex_status=building
+  [poll 6] status=chunking index_type=pageindex pageindex_status=building
+  [poll 7] status=chunking index_type=pageindex pageindex_status=building
+  [poll 8] status=chunking index_type=pageindex pageindex_status=building
+  [poll 9] status=chunking index_type=pageindex pageindex_status=building
+  [poll 10] status=chunking index_type=pageindex pageindex_status=building
+  [poll 11] status=indexed index_type=pageindex pageindex_status=ok
+==== SINGLE kb=4d43c2ef-399d-4fe3-bf08-d0a1d0b8403f （3 次重复）====
+{"run":1,"code":0,"total":2,"took_ms":4447,"message":"<none>","error":"<none>","titles":["2. 巡检执行流程","1. 适用范围与术语定义"]}
+{"run":2,"code":0,"total":2,"took_ms":2037,"message":"<none>","error":"<none>","titles":["1. 适用范围与术语定义","3. 附则 与 4. 术语表（干扰小节）"]}
+{"run":3,"code":0,"total":3,"took_ms":7277,"message":"<none>","error":"<none>","titles":["1. 适用范围与术语定义","3. 附则 与 4. 术语表（干扰小节）","2. 巡检执行流程"]}
+==== PI4DUP kb=22bcb345-8326-479c-958b-51daa2905715 （3 次重复）====
+{"run":1,"code":0,"total":2,"took_ms":12384,"message":"<none>","error":"<none>","titles":["第1章至2.1节：总则与班前点检","标题、第1章及2.1班前点检"]}
+{"run":2,"code":0,"total":0,"took_ms":2048,"message":"<none>","error":"<none>","titles":[]}
+{"run":3,"code":0,"total":2,"took_ms":20569,"message":"<none>","error":"<none>","titles":["第1章至2.1节：总则与班前点检","标题、第1章及2.1班前点检"]}
+==== PI2REF kb=32b1101f-efd6-467c-900a-255c75656791 （3 次重复）====
+{"run":1,"code":0,"total":0,"took_ms":8551,"message":"<none>","error":"<none>","titles":[]}
+{"run":2,"code":0,"total":0,"took_ms":3137,"message":"<none>","error":"<none>","titles":[]}
+{"run":3,"code":0,"total":2,"took_ms":8247,"message":"<none>","error":"<none>","titles":["班中抽检异常上报、附则与术语表","文档标题、总则与班前点检"]}
+KB_NEW=4d43c2ef-399d-4fe3-bf08-d0a1d0b8403f
+==== DIAG3 DONE ====
+
+################################################################################
+# B7  用例6 主证据：MCP search_knowledge（PI-08 run1，KB 内只有默认 pageindex 文档）
+################################################################################
+[PI-08] mcp=http://127.0.0.1:9100/mcp kb_id=22bcb345-8326-479c-958b-51daa2905715 query=PI-TOKEN-7412 modes=[hybrid vector keyword] key_len=48（不打印明文）
+==== PI-08 [run1] 逐 mode 调用 tools/call search_knowledge ====
+--- mode=hybrid : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-hybrid] HTTP_CODE=200 TIME=0.118696s SIZE=381
+[mcp-hybrid] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-hybrid] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"hybrid\",\n  \"total\": 0,\n  \"took_ms\": 12,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"hybrid\",\n  \"total\": 0,\n  \"took_ms\": 12,\n  \"items\": []\n}"}}}  
+[P1-hybrid] PASS  JSON-RPC 无 error（mode=hybrid）  (expected=false actual=false)
+[mcp-hybrid] tool-result: {"query":"PI-TOKEN-7412","mode":"hybrid","total":0,"took_ms":12,"error":null}
+[mcp-hybrid] items: []
+PI08_MODE_hybrid_TOTAL=0
+--- mode=vector : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-vector] HTTP_CODE=200 TIME=0.045662s SIZE=379
+[mcp-vector] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-vector] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"vector\",\n  \"total\": 0,\n  \"took_ms\": 5,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"vector\",\n  \"total\": 0,\n  \"took_ms\": 5,\n  \"items\": []\n}"}}}  
+[P1-vector] PASS  JSON-RPC 无 error（mode=vector）  (expected=false actual=false)
+[mcp-vector] tool-result: {"query":"PI-TOKEN-7412","mode":"vector","total":0,"took_ms":5,"error":null}
+[mcp-vector] items: []
+PI08_MODE_vector_TOTAL=0
+--- mode=keyword : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-keyword] HTTP_CODE=200 TIME=0.015309s SIZE=381
+[mcp-keyword] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-keyword] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"keyword\",\n  \"total\": 0,\n  \"took_ms\": 4,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"keyword\",\n  \"total\": 0,\n  \"took_ms\": 4,\n  \"items\": []\n}"}}}  
+[P1-keyword] PASS  JSON-RPC 无 error（mode=keyword）  (expected=false actual=false)
+[mcp-keyword] tool-result: {"query":"PI-TOKEN-7412","mode":"keyword","total":0,"took_ms":4,"error":null}
+[mcp-keyword] items: []
+PI08_MODE_keyword_TOTAL=0
+==== PI-08 [run1] 汇总 ====
+  hybrid: total=0  docs=[]
+  vector: total=0  docs=[]
+  keyword: total=0  docs=[]
+[PI-08] result -> 03-testing/evidence/PI-V4_raw/PI-08_run1_result.json
+==== PI-08 [run1] DONE ====
+
+################################################################################
+# B8  反向对照：先显式 embedding 上传同内容文档（case_PI-11），再跑同一脚本（PI-08 run2）
+################################################################################
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-11 反向对照：显式 index_type=embedding 上传 ====
+[req-form] file=@03-testing/fixtures_pi/pi_default_doc.md ; index_type=embedding（显式）
+[fixture] sha256=11321dc6870f37b6f4ab895937ee4074af6db19a2db607cccb729cd1a809a0a7
+
+HTTP_CODE=200 TIME=0.038121s
+[upload] {"code":0,"message":"ok","data":{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","status":"uploaded","task_id":"43ec7404-ecf1-43ea-938a-5e9b0c1edec0"}}
+[ids] doc_embedding=9c8f8743-5409-413b-87af-567fab0cb7e0
+[poll 1] t=4s status=parsed index_type=embedding chunk_count=0
+[poll 2] t=8s status=indexed index_type=embedding chunk_count=2
+{"code":0,"status":"indexed","chunk_count":2,"index_type":"embedding","has_tree":false}
+PI11_DOC_EMBEDDING=9c8f8743-5409-413b-87af-567fab0cb7e0
+==== PI-11 DONE ====
+
+[PI-08] mcp=http://127.0.0.1:9100/mcp kb_id=22bcb345-8326-479c-958b-51daa2905715 query=PI-TOKEN-7412 modes=[hybrid vector keyword] key_len=48（不打印明文）
+==== PI-08 [run2] 逐 mode 调用 tools/call search_knowledge ====
+--- mode=hybrid : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-hybrid] HTTP_CODE=200 TIME=0.063460s SIZE=8507
+[mcp-hybrid] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-hybrid] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"hybrid\",\n  \"total\": 2,\n  \"took_ms\": 16,\n  \"items\": [\n    {\n      \"chunk_id\": \"2b364a07-d7e6-408a-898f-f8db9a7df0fc\",\n      \"document_id\": \"9c8f8743-5409-413b-87af-567fab0cb7e0\",\n      \"filename\": \"pi_default_doc_embedding.md\",\n      \"chunk_index\
+[P1-hybrid] PASS  JSON-RPC 无 error（mode=hybrid）  (expected=false actual=false)
+[mcp-hybrid] tool-result: {"query":"PI-TOKEN-7412","mode":"hybrid","total":2,"took_ms":16,"error":null}
+[mcp-hybrid] items: [{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":1,"match_type":"hybrid","score":0.032787,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":1},"has_token":true},{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":0,"match_type":"hybrid","score":0.016129,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=0&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":0},"has_token":false}]
+PI08_MODE_hybrid_TOTAL=2
+--- mode=vector : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-vector] HTTP_CODE=200 TIME=0.052405s SIZE=8509
+[mcp-vector] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-vector] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"vector\",\n  \"total\": 2,\n  \"took_ms\": 8,\n  \"items\": [\n    {\n      \"chunk_id\": \"2b364a07-d7e6-408a-898f-f8db9a7df0fc\",\n      \"document_id\": \"9c8f8743-5409-413b-87af-567fab0cb7e0\",\n      \"filename\": \"pi_default_doc_embedding.md\",\n      \"chunk_index\"
+[P1-vector] PASS  JSON-RPC 无 error（mode=vector）  (expected=false actual=false)
+[mcp-vector] tool-result: {"query":"PI-TOKEN-7412","mode":"vector","total":2,"took_ms":8,"error":null}
+[mcp-vector] items: [{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":1,"match_type":"vector","score":0.6690668,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":1},"has_token":true},{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":0,"match_type":"vector","score":0.6159436,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=0&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":0},"has_token":false}]
+PI08_MODE_vector_TOTAL=2
+--- mode=keyword : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-keyword] HTTP_CODE=200 TIME=0.023307s SIZE=4459
+[mcp-keyword] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-keyword] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"keyword\",\n  \"total\": 1,\n  \"took_ms\": 7,\n  \"items\": [\n    {\n      \"chunk_id\": \"2b364a07-d7e6-408a-898f-f8db9a7df0fc\",\n      \"document_id\": \"9c8f8743-5409-413b-87af-567fab0cb7e0\",\n      \"filename\": \"pi_default_doc_embedding.md\",\n      \"chunk_index\
+[P1-keyword] PASS  JSON-RPC 无 error（mode=keyword）  (expected=false actual=false)
+[mcp-keyword] tool-result: {"query":"PI-TOKEN-7412","mode":"keyword","total":1,"took_ms":7,"error":null}
+[mcp-keyword] items: [{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","chunk_index":1,"match_type":"keyword","score":5.3164597,"doc_url":"https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M","location":{"type":"chunk","value":1},"has_token":true}]
+PI08_MODE_keyword_TOTAL=1
+==== PI-08 [run2] 汇总 ====
+  hybrid: total=2  docs=["9c8f8743-5409-413b-87af-567fab0cb7e0"]
+  vector: total=2  docs=["9c8f8743-5409-413b-87af-567fab0cb7e0"]
+  keyword: total=1  docs=["9c8f8743-5409-413b-87af-567fab0cb7e0"]
+[PI-08] result -> 03-testing/evidence/PI-V4_raw/PI-08_run2_result.json
+==== PI-08 [run2] DONE ====
+
+################################################################################
+# B7+' MCP mode=pageindex 是否被支持（PI-08 MODES=pageindex）
+################################################################################
+[PI-08] mcp=http://127.0.0.1:9100/mcp kb_id=22bcb345-8326-479c-958b-51daa2905715 query=PI-TOKEN-7412 modes=[pageindex] key_len=48（不打印明文）
+==== PI-08 [mode_pi] 逐 mode 调用 tools/call search_knowledge ====
+--- mode=pageindex : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-pageindex] HTTP_CODE=200 TIME=0.008296s SIZE=385
+[mcp-pageindex] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-pageindex] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"pageindex\",\n  \"total\": 0,\n  \"took_ms\": 0,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"pageindex\",\n  \"total\": 0,\n  \"took_ms\": 0,\n  \"items\": []\n}"}}}  
+[P1-pageindex] PASS  JSON-RPC 无 error（mode=pageindex）  (expected=false actual=false)
+[mcp-pageindex] tool-result: {"query":"PI-TOKEN-7412","mode":"pageindex","total":0,"took_ms":0,"error":null}
+[mcp-pageindex] items: []
+PI08_MODE_pageindex_TOTAL=0
+==== PI-08 [mode_pi] 汇总 ====
+  pageindex: total=0  docs=[]
+[PI-08] result -> 03-testing/evidence/PI-V4_raw/PI-08_mode_pi_result.json
+==== PI-08 [mode_pi] DONE ====
+
+--- MCP tools/list 中 search_knowledge 的 schema（pageindex 出现 0 次）---
+HTTP_CODE=200 TIME=0.003097s SIZE=4861
+{
+  "name": "search_knowledge",
+  "description": "在知识库中执行混合检索（向量 kNN + BM25 全文 + RRF 融合）。\n\n参数:\n  query:  搜索查询（自然语言或关键词）\n  kb_id:  知识库 UUID（与 name 二选一，不传则搜索所有知识库）\n  name:   知识库名称（与 kb_id 二选一）\n  mode:   检索模式: hybrid(混合) / vector(纯向量) / keyword(纯关键词)，默认 hybrid\n  top_k:  返回结果数量，默认 5（上限 100），避免工具输出过大触发 agent 截断\n\n返回: 命中的文档片段列表，包含 filename、chunk_index、content、score、match_type。\n",
+  "mode_enum": "<no enum>",
+  "mode_default": "hybrid",
+  "required": [
+    "query"
+  ]
+}
+--- pageindex 是否出现在该工具 schema 中 ---
+0
+0 次
+==== tools/list DONE ====
+
+################################################################################
+# 收尾：KB 最终构成
+################################################################################
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== KB 22bcb345-8326-479c-958b-51daa2905715 文档清单 + 索引统计 ====
+[{"id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","status":"indexed","chunk_count":2,"index_type":"embedding","pageindex_status":"<absent>","tree_status":"<absent>"},{"id":"dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5","filename":"pi_default_doc.md","status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok"},{"id":"30691711-1285-4164-be74-6bd38465d622","filename":"pi_default_doc.md","status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok"}]
+{"embedding_docs":1,"pageindex_docs":2,"total_indexed":3}
+==== DONE ====
+
+################################################################################
+# 截图清单
+################################################################################
+  03-testing/evidence/PI-V4_ui_default.png    默认选中 PageIndex（上传区，未点任何 radio）
+  03-testing/evidence/PI-V4_ui_row.png        上传后列表行：pi_default_doc.md / 分块数 0 / PageIndex
+  03-testing/evidence/PI-V4_ui_indexing.png   列表行：PageIndex / 建树中（分块中）
+  03-testing/evidence/PI-V4_ui_indexed.png    列表行：PageIndex / 已建树 / 已索引
+================================================================================
+END

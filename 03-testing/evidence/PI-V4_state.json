@@ -1,0 +1,112 @@
+{
+ "card": "t_2ba41218",
+ "batch": "VI-PI-4",
+ "scope": "用例2（线上 UI 默认 pageindex 端到端）+ 用例6（默认 pageindex 与 MCP 引用链路冲突）",
+ "worker": "yuntianming",
+ "started_at_utc": "2026-10-12T03:49:24Z",
+ "kb_id": "22bcb345-8326-479c-958b-51daa2905715",
+ "kb_name": "验证-默认pageindex-VI-PI-4-20261012-035005",
+ "kb_created_at_utc": "2026-10-12T03:50:06Z",
+ "kb_url": "https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715",
+ "login_route": "本地 API 签发 token（POST /api/v1/auth/login, admin 测试账号）+ 注入 localStorage.kb_token",
+ "auth_route": "本地 API /api/v1/auth/login（测试环境账号，仅测试用）",
+ "login_route_note": "线上 /kb-management/ 未登录时跳 /login；注入 localStorage.kb_token 后直接进入 /kb/<kb_id>（前端 user store 从 localStorage 读 token）——本段走的是注入路线，未走表单登录",
+ "ui_entry": "https://agent.carefold.ai/kb-management/",
+ "ui_entry_js_observed": "assets/index-BHI8vxe6.js",
+ "ui_kbdetailview_js_observed": "assets/KbDetailView-CcLfGsq-.js",
+ "ui_kbdetailview_js_sha256": "c4c9ff349fd02ec4f7c81f0151f2a2ae97f49c43a33b56ac565f4fb42b538f53",
+ "fixture": {
+  "path": "03-testing/fixtures_pi/pi_default_doc.md",
+  "sha256": "11321dc6870f37b6f4ab895937ee4074af6db19a2db607cccb729cd1a809a0a7",
+  "token": "PI-TOKEN-7412"
+ },
+ "backend": "http://127.0.0.1:9012",
+ "documents": [
+  {
+   "id": "30691711-1285-4164-be74-6bd38465d622",
+   "filename": "pi_default_doc.md",
+   "how": "线上 UI 上传，未点任何 radio（CDP DOM.setFileInputFiles 直塞 .el-upload input[type=file]）",
+   "formdata_observed": {"index_type": "pageindex", "file": "pi_default_doc.md"},
+   "radio_clicks": 0,
+   "uploaded_at_ui": "2026-10-12 03:52:16",
+   "status": "indexed",
+   "index_type": "pageindex",
+   "pageindex_status": "ok",
+   "chunk_count": 0,
+   "tree_node_count": 3,
+   "tree_build_ms": 34212
+  },
+  {
+   "id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5",
+   "filename": "pi_default_doc.md",
+   "how": "线上 UI 第二次上传（同样未点 radio），用于抓「建树中」态截图",
+   "formdata_observed": {"index_type": "pageindex", "file": "pi_default_doc.md"},
+   "radio_clicks": 0,
+   "uploaded_at_ui": "2026-10-12 04:00:41",
+   "status": "indexed",
+   "index_type": "pageindex",
+   "pageindex_status": "ok",
+   "chunk_count": 0,
+   "tree_node_count": 3
+  },
+  {
+   "id": "9c8f8743-5409-413b-87af-567fab0cb7e0",
+   "filename": "pi_default_doc_embedding.md",
+   "how": "curl 显式 -F index_type=embedding（case_PI-11，用例6 反向对照用）",
+   "uploaded_at_utc": "2026-10-12T04:07:51Z",
+   "status": "indexed",
+   "index_type": "embedding",
+   "chunk_count": 2
+  }
+ ],
+ "diagnostic_kb": {
+  "kb_id": "4d43c2ef-399d-4fe3-bf08-d0a1d0b8403f",
+  "doc_id": "e1ad418a-d3c7-4171-a1fb-49b37fb44156",
+  "purpose": "DIAG3 单文档 KB（API 默认上传，请求未含 index_type 字段）→ pageindex 检索 3/3 命中"
+ },
+ "reference_kb_from_segment2": {
+  "kb_id": "32b1101f-efd6-467c-900a-255c75656791",
+  "doc_id": "034cc16f-d230-4fca-beb1-04daa2337cc2d",
+  "purpose": "第 2 段对照 KB；DIAG3 复跑 pageindex 检索 3 次 → 命中 1/3（同样不稳定）"
+ },
+ "timestamps_utc": {
+  "a6_online_artifacts": "2026-10-12T03:50:15Z",
+  "a3_ui_dom_default": "2026-10-12T03:52:09Z",
+  "a4_ui_upload_1": "2026-10-12T03:52:16Z",
+  "a4_poll_final": "2026-10-12T03:58:53Z",
+  "a4_ui_upload_2_indexing_capture": "2026-10-12T04:00:41Z",
+  "pi08_run1_mcp_pageindex_only": "2026-10-12T04:01:51Z",
+  "pi09_first_single": "2026-10-12T04:02:41Z",
+  "diag_pageindex_and_tree": "2026-10-12T04:03:15~04:03:34Z",
+  "diag3_isolation": "2026-10-12T04:04:04~04:06:04Z",
+  "pi09_x3": "2026-10-12T04:06:54~04:07:03Z",
+  "pi10_x3": "2026-10-12T04:07:06~04:07:45Z",
+  "pi11_embedding_control": "2026-10-12T04:07:51Z",
+  "pi08_run2_mcp_with_embedding": "2026-10-12T04:08:00Z",
+  "pi08_mode_pageindex_probe": "2026-10-12T04:08:12Z",
+  "mcp_tools_list": "2026-10-12T04:08:19Z"
+ },
+ "verdicts": {
+  "case2": "PARTIAL — 主体 PASS（线上 UI 默认选中 pageindex + 不点 radio 上传走树索引 + 建树 ok）；附加的 pageindex 检索/问答稳定性子项 FAIL（1/3 命中）",
+  "case6": "CONFLICT 成立 — 默认上传的 pageindex 文档在 MCP 引用链路上 0 命中；反向对照同 KB 显式 embedding 副本命中 2 条且带 doc_url"
+ },
+ "evidence": {
+  "raw_dir": "03-testing/evidence/PI-V4_raw/",
+  "assembled_log": "03-testing/evidence/PI-V4_case2_case6.txt",
+  "per_check_result": "03-testing/evidence/PI-V4_result.json",
+  "screenshots": [
+   "03-testing/evidence/PI-V4_ui_default.png",
+   "03-testing/evidence/PI-V4_ui_row.png",
+   "03-testing/evidence/PI-V4_ui_indexing.png",
+   "03-testing/evidence/PI-V4_ui_indexed.png"
+  ]
+ },
+ "constraints_respected": {
+  "code_unchanged": true,
+  "services_not_restarted": true,
+  "business_kb_untouched": true,
+  "only_own_kbs_used": true,
+  "secrets_not_printed": "KB_MCP_API_KEY 只回显 ${#KEY} 长度(48)；access_token 只回显长度(209)",
+  "no_subcards": true
+ }
+}

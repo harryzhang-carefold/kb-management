@@ -1,0 +1,38 @@
+{
+  "query": "PI-TOKEN-7412",
+  "mode": "vector",
+  "total": 2,
+  "took_ms": 8,
+  "items": [
+    {
+      "chunk_id": "2b364a07-d7e6-408a-898f-f8db9a7df0fc",
+      "document_id": "9c8f8743-5409-413b-87af-567fab0cb7e0",
+      "filename": "pi_default_doc_embedding.md",
+      "chunk_index": 1,
+      "score": 0.6690668,
+      "match_type": "vector",
+      "metadata": {},
+      "location": {
+        "type": "chunk",
+        "value": 1
+      },
+      "doc_url": "https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=1&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M",
+      "content": "任一项超出阈值时，先按急停停机再逐级上报，禁止带病运行；停机后须在设备状态牌上悬挂「禁止启动」标识。\n\n### 2.2 班中抽检与异常上报\n\n班中每小时抽检一次，重点观察振动幅度与异常异响。发现异常后十五分钟内上报班组长，并同步在系统登记，登记内容包括发生时间、工序号、现象描述与已采取的措施。追溯本次巡检批次时使用口令 PI-TOKEN-7412 定位日志，该口令仅用于检索定位，不参与任何权限校验与身份识别。上报后须在二十四小时内完成闭环，并回填处理结论与验证人签字。\n\n## 3. 附则（干扰小节）\n\n本手册未尽事宜参照车间通用安全规程执行。手册修订由工艺科统一发布，修订版本自发布之日生效，旧版本同时作废；各班组不得自行复制修改后张贴使用。\n\n## 4. 术语表（干扰小节）\n\n点检：按固定项目与周期对单台设备状态的检查，通常由操作工完成。巡检：按既定路线对多台设备的巡回检查，通常由班组长完…"
+    },
+    {
+      "chunk_id": "16287849-ebfa-49a2-baed-697766c13334",
+      "document_id": "9c8f8743-5409-413b-87af-567fab0cb7e0",
+      "filename": "pi_default_doc_embedding.md",
+      "chunk_index": 0,
+      "score": 0.6159436,
+      "match_type": "vector",
+      "metadata": {},
+      "location": {
+        "type": "chunk",
+        "value": 0
+      },
+      "doc_url": "https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715/doc/9c8f8743-5409-413b-87af-567fab0cb7e0?chunk=0&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzhmODc0My01NDA5LTQxM2ItODdhZi01NjdmYWIwY2I3ZTAiLCJrYl9pZCI6IjIyYmNiMzQ1LTgzMjYtNDc5Yy05NThiLTUxZGFhMjkwNTcxNSIsInR5cGUiOiJ2aWV3Iiwic2NvcGUiOiJzaW5nbGVfZG9jIiwidmlld2VyIjoibWNwIiwiZXhwIjoxNzkxNzc4OTgwLCJpYXQiOjE3OTE3NzgwODB9.PhSEPxrhTh3MfzQZhQFQBQN0NOfcP6FGdxZG76ExP1M",
+      "content": "# 智能制造产线巡检手册\n\n## 1. 适用范围与术语定义\n\n本手册适用于装配车间 A 线与 B 线的日常巡检作业，覆盖班前点检、班中抽检与班后复核三个环节。当班操作工须按本手册执行，不得自行简化流程。所有巡检记录须在交接班前录入系统，未录入视为本次巡检无效；特殊工况（如临时试产、设备大修后试运行）以现场工艺卡为准，工艺卡与本手册冲突时以工艺卡为准，并在班后说明中注明差异原因。\n\n### 1.1 记录口径\n\n巡检记录以「批次号 + 工序号」为最小单位，一条记录对应一次设备确认动作。异常记录须补填责任人与处理时限，逾期未闭环的记录在周例会上通报，并计入班组当月质量考核。\n\n## 2. 巡检执行流程\n\n### 2.1 班前点检\n\n操作工按点检表逐项确认设备状态，重点核对主轴温度、气路压力与润滑油位。任一项超出阈值时，先按急停停机再逐级上报，禁止带病运行；停机后须在设备状态牌上悬挂「禁止启动」标…"
+    }
+  ]
+}

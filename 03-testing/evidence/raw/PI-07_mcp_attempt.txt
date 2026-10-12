@@ -1,0 +1,4 @@
+# MCP 兜底复核尝试：mcp_server.py:100 的 (d.meta or {}).get("index_type","embedding")
+# 时间: 2026-10-12T03:46:32Z  target: http://127.0.0.1:9100
+# 说明: tools/call 完整调用序列与 case_PI-08 归第 4 段（t_2ba41218）；本段只做最小可达性探测。
+GET / -> HTTP_CODE=401

@@ -1,0 +1,18 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== KB=22bcb345-8326-479c-958b-51daa2905715 mode=pageindex ====
+
+HTTP_CODE=200 TIME=16.342282s
+{"code":0,"total":0,"took_ms":16328,"message":"<none>","error":"<none>","items":[]}
+---- 该 KB 文档清单 ----
+{"hybrid_total":0}
+{"embedding_docs":0,"pageindex_docs":2,"total_indexed":2}
+==== KB=32b1101f-efd6-467c-900a-255c75656791 mode=pageindex ====
+
+HTTP_CODE=200 TIME=3.095763s
+{"code":0,"total":2,"took_ms":3083,"message":"<none>","error":"<none>","items":[{"document_id":"034cc16f-d230-4fca-beb1-04da2337cc2d","node_title":"班中抽检异常上报、附则与术语表","has_token":true},{"document_id":"034cc16f-d230-4fca-beb1-04da2337cc2d","node_title":"文档标题、总则与班前点检","has_token":false}]}
+---- 该 KB 文档清单 ----
+{"hybrid_total":0}
+{"embedding_docs":0,"pageindex_docs":1,"total_indexed":1}
+==== 本 KB 文档逐条 pageindex 状态 ====
+[{"id":"dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5","filename":"pi_default_doc.md","status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok","tree_chars":776,"node_count":3},{"id":"30691711-1285-4164-be74-6bd38465d622","filename":"pi_default_doc.md","status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok","tree_chars":776,"node_count":3}]
+==== DIAG DONE ====

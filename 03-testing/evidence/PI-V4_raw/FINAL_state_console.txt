@@ -1,0 +1,5 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== KB 22bcb345-8326-479c-958b-51daa2905715 文档清单 + 索引统计 ====
+[{"id":"9c8f8743-5409-413b-87af-567fab0cb7e0","filename":"pi_default_doc_embedding.md","status":"indexed","chunk_count":2,"index_type":"embedding","pageindex_status":"<absent>","tree_status":"<absent>"},{"id":"dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5","filename":"pi_default_doc.md","status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok"},{"id":"30691711-1285-4164-be74-6bd38465d622","filename":"pi_default_doc.md","status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok"}]
+{"embedding_docs":1,"pageindex_docs":2,"total_indexed":3}
+==== DONE ====

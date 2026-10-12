@@ -1,0 +1,40 @@
+doc.status = indexed chunk_count = 0
+meta keys = ['index_type', 'pageindex_status', 'pageindex_tree', 'parse_engine', 'parsed_at', 'source_name', 'source_type']
+index_type = pageindex pageindex_status = ok
+tree keys = ['build_ms', 'created_at', 'full_text_chars', 'model', 'node_count', 'piece_count', 'root', 'status', 'version']
+tree.status = ok model = deepseek-flash node_count = 3 build_ms = 64107 full_text_chars = 776
+--- tree.root 全文 ---
+{
+ "end": 776,
+ "start": 0,
+ "title": "智能制造产线巡检手册",
+ "node_id": "n1",
+ "summary": "本手册适用于装配车间A线与B线巡检，涵盖班前点检、班中抽检、班后复核、异常上报、附则与术语表。",
+ "children": [
+  {
+   "end": 404,
+   "start": 0,
+   "title": "文档标题、总则与班前点检",
+   "node_id": "n1..1",
+   "summary": "包含手册标题、适用范围与术语定义、巡检执行流程总述及班前点检要求；强调按点检表确认设备状态，超阈值须停机上报。",
+   "children": []
+  },
+  {
+   "end": 776,
+   "start": 404,
+   "title": "班中抽检异常上报、附则与术语表",
+   "node_id": "n1..2",
+   "summary": "包含班中抽检与异常上报、附则及术语表；规定每小时抽检、十五分钟内上报、二十四小时内闭环，并区分点检与巡检记录模板。",
+   "children": []
+  }
+ ]
+}
+--- 夹具 markdown 标题（H1/H2/H3）---
+'# 智能制造产线巡检手册'
+'## 1. 适用范围与术语定义'
+'### 1.1 记录口径'
+'## 2. 巡检执行流程'
+'### 2.1 班前点检'
+'### 2.2 班中抽检与异常上报'
+'## 3. 附则（干扰小节）'
+'## 4. 术语表（干扰小节）'

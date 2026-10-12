@@ -1,0 +1,298 @@
+{
+ "card": "t_32351222",
+ "batch": "VI-PI-2",
+ "generated_at_utc": "2026-10-12T03:41:00Z",
+ "kb_id": "32b1101f-efd6-467c-900a-255c75656791",
+ "env": {
+  "backend": "http://127.0.0.1:9012",
+  "llm": "deepseek-flash",
+  "commit_baseline": "3dc1ddf (feat/default-pageindex)",
+  "head_at_run": "74287fa"
+ },
+ "case1": {
+  "case": "PI-01 默认上传（不传 index_type）应落 pageindex 且非降级",
+  "endpoint": "POST /api/v1/knowledge-bases/{kb_id}/documents",
+  "request_fields": [
+   "file"
+  ],
+  "fixture": {
+   "file": "03-testing/fixtures_pi/pi_default_doc.md",
+   "sha256": "11321dc6870f37b6f4ab895937ee4074af6db19a2db607cccb729cd1a809a0a7",
+   "markdown_headings": [
+    "# 智能制造产线巡检手册",
+    "## 1. 适用范围与术语定义",
+    "### 1.1 记录口径",
+    "## 2. 巡检执行流程",
+    "### 2.1 班前点检",
+    "### 2.2 班中抽检与异常上报",
+    "## 3. 附则（干扰小节）",
+    "## 4. 术语表（干扰小节）"
+   ]
+  },
+  "assertions": {
+   "A1_上传HTTP200_code0_返回document_id_task_id": true,
+   "A2_meta.index_type==pageindex": true,
+   "A3_meta.pageindex_status==ok": true,
+   "A4_tree.ok_model_nodes>=2_build_ms>0": true,
+   "A5_root为dict含node_id_title_children且0<=start<end<=full_text_chars": true,
+   "A6字面_root.title!=夹具markdown标题": false,
+   "A7_doc.status==indexed": true,
+   "A8_openapi_upload_index_type_default==pageindex": true
+  },
+  "observed": {
+   "upload_http_code": 200,
+   "upload_code": 0,
+   "document_id": "034cc16f-d230-4fca-beb1-04da2337cc2d",
+   "task_id": "278b62c5-2b41-43b4-ab2f-52e6b7f10356",
+   "doc_status": "indexed",
+   "chunk_count": 0,
+   "index_type": "pageindex",
+   "pageindex_status": "ok",
+   "tree_status": "ok",
+   "tree_model": "deepseek-flash",
+   "node_count": 3,
+   "build_ms": 64107,
+   "full_text_chars": 776,
+   "root_node_id": "n1",
+   "root_title": "智能制造产线巡检手册",
+   "root_start": 0,
+   "root_end": 776,
+   "root_children_len": 2,
+   "child_titles": [
+    "文档标题、总则与班前点检",
+    "班中抽检异常上报、附则与术语表"
+   ],
+   "fixture_h1": "智能制造产线巡检手册",
+   "openapi_default": "pageindex"
+  },
+  "anti_degradation": {
+   "说明": "A6 字面条件不成立（root.title 恰等于夹具 H1）。经查代码，降级树 root.title 同样取 H1（pageindex_engine.py:311-313 doc_title=heads[title_idx][2]，且 _heading_degraded_tree 也已验证），故 A6 作为降级判据无区分度。反降级改由以下 4 条独立证据支撑：",
+   "证据1_tree_status": "meta.pageindex_status=ok / tree.status=ok（降级路径会写 degraded，见 pageindex_engine.py:518-519,553-554）",
+   "证据2_节点数": "node_count=3；按夹具 4 个 H2 + 3 个 H3 的 heading 规则树应为 1+4(+3) ≥7 节点 —— 实测 3 节点，明显是 LLM 归并",
+   "证据3_子节点标题非heading": "子节点标题=['文档标题、总则与班前点检', '班中抽检异常上报、附则与术语表']，均非夹具任何 heading 文本",
+   "证据4_summary为改写": "root/子节点 summary 是压缩改写（如 root.summary 提到“附则与术语表”并去掉原文空格），而降级树 summary=_first_content(原文片段) 逐字摘录（pageindex_engine.py:275,313）",
+   "证据5_build_ms": "build_ms=64107（64s，真实 LLM 建树耗时量级）"
+  },
+  "verdict": "PASS",
+  "verdict_note": "A1-A5/A7/A8 全部满足；A6 仅字面不成立且已证明无区分度（见 anti_degradation），不据此判 FAIL。若 orchestration 要求严格按字面 A6，请按 §anti_degradation 重新裁量。"
+ },
+ "case3": {
+  "case": "用例3 该文档 pageindex 检索/问答可用，sources 正常",
+  "search": {
+   "endpoint": "POST /api/v1/knowledge-bases/{kb_id}/search",
+   "request": {
+    "query": "追溯本次巡检批次时应该用哪个口令定位日志？",
+    "mode": "pageindex",
+    "top_k": 3
+   },
+   "assertions": {
+    "S1_HTTP200": true,
+    "S2_total>=1": false,
+    "S3_至少一条item.content含PI-TOKEN-7412": false
+   },
+   "observed": {
+    "http_code": 200,
+    "code": 0,
+    "total": 0,
+    "items_n": 0,
+    "items_with_token": 0,
+    "took_ms": 1440,
+    "message": null
+   },
+   "verdict": "FAIL",
+   "replays_same_params": [
+    {
+     "run": 1,
+     "total": 0,
+     "took_ms": 2283,
+     "items_with_token": 0,
+     "node_titles": []
+    },
+    {
+     "run": 2,
+     "total": 0,
+     "took_ms": 3589,
+     "items_with_token": 0,
+     "node_titles": []
+    },
+    {
+     "run": 3,
+     "total": 1,
+     "took_ms": 12819,
+     "items_with_token": 1,
+     "node_titles": [
+      "班中抽检异常上报、附则与术语表"
+     ]
+    },
+    {
+     "run": 4,
+     "total": 0,
+     "took_ms": 2396,
+     "items_with_token": 0,
+     "node_titles": []
+    }
+   ],
+   "variants_hit_rate": [
+    {
+     "q_idx": 1,
+     "total": 0,
+     "items_with_token": 0
+    },
+    {
+     "q_idx": 2,
+     "total": 0,
+     "items_with_token": 0
+    },
+    {
+     "q_idx": 3,
+     "total": 1,
+     "items_with_token": 1
+    },
+    {
+     "q_idx": 4,
+     "total": 3,
+     "items_with_token": 2
+    },
+    {
+     "q_idx": 5,
+     "total": 3,
+     "items_with_token": 2
+    }
+   ],
+   "variants_hit_rate_summary": "3/5"
+  },
+  "chat": {
+   "endpoint": "POST /api/v1/knowledge-bases/{kb_id}/chat (SSE)",
+   "request": {
+    "question": "追溯本次巡检批次时应该用哪个口令定位日志？",
+    "retrieval_mode": "pageindex",
+    "top_n": 3
+   },
+   "assertions": {
+    "B1_事件序列含meta->token(多)->sources->done": true,
+    "B2_sources>=1": true,
+    "B3_答案非空且含PI-TOKEN-7412或正确引用片段": true
+   },
+   "observed": {
+    "http_code": 200,
+    "event_counts": {
+     "done": 1,
+     "sources": 1,
+     "meta": 1,
+     "token": 50
+    },
+    "event_order": [
+     "meta",
+     "token",
+     "token",
+     "...",
+     "sources",
+     "done"
+    ],
+    "sources_n": 1,
+    "sources_have_token": false,
+    "answer": "根据参考片段 [1]，追溯本次巡检批次时应使用口令 **PI-TOKEN-7412** 定位日志。\n\n需要注意：\n- 该口令**仅用于检索定位**，不参与任何权限校验与身份识别 [1]。",
+    "answer_len": 93,
+    "sources_meta": [
+     {
+      "node_id": "n1..2",
+      "node_title": "班中抽检异常上报、附则与术语表",
+      "char_start": 404,
+      "char_end": 776,
+      "truncated": false,
+      "score_source": "llm_relevance"
+     }
+    ]
+   },
+   "verdict": "PASS",
+   "replays_same_params": [
+    {
+     "run": 1,
+     "sources_n": 1,
+     "event_counts": {
+      "done": 1,
+      "sources": 1,
+      "meta": 1,
+      "token": 50
+     }
+    },
+    {
+     "run": 2,
+     "sources_n": 2,
+     "event_counts": {
+      "done": 1,
+      "sources": 1,
+      "meta": 1,
+      "token": 48
+     }
+    }
+   ],
+   "event_order_note": "实际事件顺序为 meta → token×N → sources → done（chat.py:84-100：sources 与 done 在 done 分支内先后 yield）。任务书写「meta → sources → token（多次）→ done」与实现不符；本仓既有存档 TC-AC3 亦记录为 meta→token×33→sources→done。B1 按「四类事件齐备且顺序符合实现」判定 PASS，并留痕。"
+  },
+  "observation_default_retrieval_mode": {
+   "说明": "同一文档、不传 retrieval_mode（走 schema 默认，非 hybrid 字面）时的 sources 数",
+   "request": {
+    "question": "追溯本次巡检批次时应该用哪个口令定位日志？",
+    "top_n": 3
+   },
+   "observed_sources_n": 0,
+   "observed_meta_notice": "未在 PageIndex 索引中检索到相关内容。请换一种问法（树索引对文档标题与小节更敏感）。",
+   "expected_dev": "开发自测口径（DEV_REPORT.md §5 P1，t_7f451c5f 段）预期 sources=0",
+   "consistency": "与开发自测口径一致",
+   "备注": "已上报的既有 P1 产品决策错配（决策卡 t_9013e8b2）的回归观察，非本次改动回归",
+   "裁定": "观察项，不计入本卡 FAIL"
+  },
+  "verdict": "FAIL",
+  "verdict_note": "PI-03 问答（chat）三条断言全 PASS 且 2 次重放 sources 均≥1；PI-02 检索（search）主查询首执 total=0 → S2/S3 FAIL，4 次同参重放 1/4 命中 → 非确定性。故用例3 整体判 FAIL（检索子项），见 findings。"
+ },
+ "findings": [
+  {
+   "id": "PI-V2-F1",
+   "title": "pageindex 检索（mode=pageindex）对措辞敏感：最直接问法 5 次执行仅 1 次命中，同一问法经 chat 通道 3/3 命中",
+   "severity": "中高（P2，若默认 pageindex 检索为产品主入口建议升 P1 由产品拍板）",
+   "repro": "bash 03-testing/curl/case_PI-02_search_pageindex.sh（首执 total=0）；重放脚本 03-testing/evidence/raw/replay_pi02_pi03.sh（同参 4 次：0/0/1/0）",
+   "expected": "按本卡 PI-02 硬断言：HTTP 200、total>=1、至少一条 item.content 含 PI-TOKEN-7412",
+   "actual": "首执 HTTP 200 但 total=0、items=[]；4 次同参重放 total=[0,0,1,0]（命中 1/4）；变体问法 5 条命中 3/5",
+   "evidence": [
+    "03-testing/evidence/PI-V2_case1_case3.txt（PI-02 段）",
+    "03-testing/evidence/raw/PI-02_search_main.json",
+    "03-testing/evidence/raw/PI-02_replay_main_1..4.json",
+    "03-testing/evidence/raw/PI-V2_replays.txt"
+   ],
+   "root_cause_hypothesis": "retrieve() 为单次 LLM 选节点（temperature=0.0、json_mode），未命中时 LLM 返回空 selected；_extract_json 解析失败也会静默变成 selected=[]（pageindex_engine.py:656-667，无解析失败重试）。未定位到确切分支，建议开发侧在 retrieve 打印 raw/selected 以便复现。",
+   "impact": "默认上传即 pageindex（本次改动），若用户用自然语言提问而问法不与节点标题共享字面词，检索可能返回空结果；chat 通道同问题稳定命中，说明非数据/索引缺失。"
+  },
+  {
+   "id": "PI-V2-F2",
+   "title": "PI-01 反降级旁证断言 A6（root.title != 夹具 markdown 标题）字面不成立，且该断言无区分度",
+   "severity": "低（测试断言缺陷，非产品缺陷）",
+   "detail": {
+    "说明": "A6 字面条件不成立（root.title 恰等于夹具 H1）。经查代码，降级树 root.title 同样取 H1（pageindex_engine.py:311-313 doc_title=heads[title_idx][2]，且 _heading_degraded_tree 也已验证），故 A6 作为降级判据无区分度。反降级改由以下 4 条独立证据支撑：",
+    "证据1_tree_status": "meta.pageindex_status=ok / tree.status=ok（降级路径会写 degraded，见 pageindex_engine.py:518-519,553-554）",
+    "证据2_节点数": "node_count=3；按夹具 4 个 H2 + 3 个 H3 的 heading 规则树应为 1+4(+3) ≥7 节点 —— 实测 3 节点，明显是 LLM 归并",
+    "证据3_子节点标题非heading": "子节点标题=['文档标题、总则与班前点检', '班中抽检异常上报、附则与术语表']，均非夹具任何 heading 文本",
+    "证据4_summary为改写": "root/子节点 summary 是压缩改写（如 root.summary 提到“附则与术语表”并去掉原文空格），而降级树 summary=_first_content(原文片段) 逐字摘录（pageindex_engine.py:275,313）",
+    "证据5_build_ms": "build_ms=64107（64s，真实 LLM 建树耗时量级）"
+   },
+   "evidence": [
+    "03-testing/evidence/raw/PI-01_doc_final.json",
+    "03-testing/evidence/raw/PI-01_tree_dump.txt"
+   ],
+   "裁定": "不据此判 FAIL；建议后续把该断言改为「node_count 与 heading 数不符 / 子节点标题非 heading / summary 非逐字摘录」"
+  },
+  {
+   "id": "PI-V2-F3",
+   "title": "任务书描述的 SSE 事件顺序（meta→sources→token→done）与实现/既有存档口径不一致",
+   "severity": "低（任务书口径偏差，非产品缺陷）",
+   "detail": "实测 meta → token×N → sources → done（chat.py:84-100）；本仓既有存档 TC-AC3 亦为 meta→token×33→sources→done。B1 按「四类事件齐备 + 顺序符合实现」判 PASS。",
+   "evidence": [
+    "03-testing/evidence/raw/PI-03_chat_main.sse",
+    "03-testing/evidence/PI-V2_case1_case3.txt（PI-03 段）"
+   ]
+  }
+ ],
+ "verdicts": {
+  "case1": "PASS",
+  "case3": "FAIL"
+ }
+}

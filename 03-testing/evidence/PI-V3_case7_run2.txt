@@ -1,0 +1,52 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-07 建自测 KB（模拟用例，非存量真实数据）: 验证-兜底-legacy-VI-PI-3-034620 ====
+HTTP_CODE=200
+[kb] id=52d96f8c-a5a5-4e49-be3c-d27764223c31 name=验证-兜底-legacy-VI-PI-3-034620
+==== PI-07 上传（显式 embedding）====
+[fixture] sha256=c3257bbe446e14425a9eeeb392041434cb64983595ea41cf8f3195847880b985
+HTTP_CODE=200
+[ids] doc=08aca631-ac36-451b-982e-ca0d05a697d0
+[poll 1] t=5s status=parsed chunk_count=0
+[poll 2] t=10s status=indexed chunk_count=1
+[C1a] PASS  上传后 meta.index_type 为 embedding  (expected=embedding actual=embedding)
+[C1b] PASS  上传后 status 为 indexed  (expected=indexed actual=indexed)
+[C1c] PASS  上传后 chunk_count > 0（actual=1）  (expected=gt0 actual=gt0)
+==== PI-07 C2: 人工删键模拟历史老文档（仅本脚本自建文档）====
+[strip] doc=08aca631-ac36-451b-982e-ca0d05a697d0 kb=52d96f8c-a5a5-4e49-be3c-d27764223c31 file=legacy_no_index_type_doc.md status=indexed
+[strip] meta keys before = ['index_type', 'parse_engine', 'parsed_at', 'source_name', 'source_type']
+[strip] removed index_type='embedding'  受影响行数=1
+[strip] meta keys after  = ['parse_engine', 'parsed_at', 'source_name', 'source_type']
+[strip] 复核 meta->>'index_type' = None（应为 None）
+HTTP_CODE=200
+{"code":0,"status":"indexed","chunk_count":1,"meta":{"parsed_at":"2026-10-12T03:46:21.391461Z","source_name":"legacy_no_index_type_doc.md","source_type":"md","parse_engine":"local"}}
+[C2] PASS  删键后 GET 返回的 meta 不含 index_type（原样返回）  (expected=false actual=false)
+==== PI-07 C3: POST reindex → 兜底分流应为 embedding ★关键 ====
+HTTP_CODE=200 TIME=0.024705s
+{"code":0,"message":"ok","data":{"task_id":"66ed40b4-af5f-486e-b1ac-4e68e95cbebf","index_type":"embedding"}}
+[C3] PASS  reindex 响应 data.index_type 为 embedding（无 index_type 兜底）  (expected=embedding actual=embedding)
+==== PI-07 C4: 轮询 reindex 后的文档 ====
+[poll-r 1] t=5s status=embedding chunk_count=1 index_type=<absent>
+[poll-r 2] t=10s status=indexed chunk_count=1 index_type=<absent>
+[C4a] PASS  reindex 后 status 为 indexed  (expected=indexed actual=indexed)
+[C4b] PASS  reindex 后 chunk_count > 0（actual=1）  (expected=gt0 actual=gt0)
+==== PI-07 C5/C6: 检索兜底文档 ====
+[search-vector] HTTP_CODE=200 TIME=0.049766s
+[search-vector] total=2 命中=2 items=[{"filename":"legacy_no_index_type_doc.md","score":0.6509178,"match_type":"vector","has_token":true},{"filename":"legacy_no_index_type_doc.md","score":0.6509178,"match_type":"vector","has_token":true}]
+[C5] PASS  search mode=vector (total=2 hit=2)
+[search-hybrid] HTTP_CODE=200 TIME=0.054248s
+[search-hybrid] total=2 命中=2 items=[{"filename":"legacy_no_index_type_doc.md","score":0.032787,"match_type":"hybrid","has_token":true},{"filename":"legacy_no_index_type_doc.md","score":0.032258,"match_type":"hybrid","has_token":true}]
+[C6] PASS  search mode=hybrid (total=2 hit=2)
+==== PI-07 C7: 前端代码复核（显示兜底 || 'embedding'）====
+61:          <el-tag size="small" :type="(row.meta?.index_type || 'embedding') === 'pageindex' ? 'danger' : ''">
+62:            {{ (row.meta?.index_type || 'embedding') === 'pageindex' ? 'PageIndex' : 'Embedding' }}
+273:  const it = row.meta?.index_type || 'embedding'
+[vue] 命中行数=3（KbDetailView.vue:61/62 列表标签 + :273 重建索引分流）
+[C7] PASS  前端兜底 grep 命中 3 处
+==== PI-07 C8: MCP 9100 兜底复核（尽力而为，调不通记 NOT-RUN）====
+# MCP 兜底复核尝试：mcp_server.py:100 的 (d.meta or {}).get("index_type","embedding")
+# 时间: 2026-10-12T03:46:32Z  target: http://127.0.0.1:9100
+# 说明: tools/call 完整调用序列与 case_PI-08 归第 4 段（t_2ba41218）；本段只做最小可达性探测。
+GET / -> HTTP_CODE=401
+[C8] NOT-RUN（MCP tools/call 最小调用序列归第 4 段 t_2ba41218；本段以代码复核为准）
+==== PI-07 DONE  verdict=PASS fails=0  kb=52d96f8c-a5a5-4e49-be3c-d27764223c31 doc=08aca631-ac36-451b-982e-ca0d05a697d0 ====
+[summary] 03-testing/evidence/raw/PI-07_result.json

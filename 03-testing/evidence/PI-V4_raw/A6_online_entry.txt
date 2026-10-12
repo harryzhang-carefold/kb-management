@@ -1,0 +1,63 @@
+=== A6 线上产物对照 2026-10-12T03:50:15Z ===
+--- GET https://agent.carefold.ai/kb-management/ ---
+HTTP_CODE=200 TIME=0.019166s SIZE=641
+--- index.html 内容 ---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/kb-management/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+    <script type="module" src="/kb-management/assets/index-BHI8vxe6.js"></script>
+    <link rel="modulepreload" href="/kb-management/assets/rolldown-runtime-hePW80VL.js">
+    <link rel="modulepreload" href="/kb-management/assets/user-DkKVsbeg.js">
+    <link rel="stylesheet" href="/kb-management/assets/index-DqZNZhns.css">
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+--- 入口 js 文件名（正则提取 assets/index-*.js）---
+assets/index-BHI8vxe6.js
+ENTRY_JS=assets/index-BHI8vxe6.js
+--- 拉取入口 js 头部 ---
+HTTP_CODE=200 SIZE=861294
+--- 入口 js 引用的 KbDetailView chunk 名 ---
+assets/KbDetailView-CcLfGsq-.js
+KBDETAILVIEW_JS=assets/KbDetailView-CcLfGsq-.js
+HTTP_CODE=200 SIZE=9273
+--- 证据: KbDetailView js 中 indexType 默认值上下文 ---
+--- 证据: 含 pageindex 的最小片段 ---
+(),F=O(),I=x(),L=E.params.id,R=o(null),z=o([]),B=o(!1),V=o(`pageindex`),H=null,U=o(!1),W=o(!1),G=o(`rendered`),K=o({filename:``,f
+v(L,e.id),u.success(`已删除`),Y()}catch{}},Q=e=>{let t=e.meta?.pageindex_status;return!t||t===`none`?``:{building:`建树中`,ok:`已建树`,deg
+ing`,ok:`success`,degraded:`info`,failed:`danger`})[e.meta?.pageindex_status]||`info`,Ce=async e=>{let t=(e.meta?.index_type||`em
+s(`已提交重建索引任务`),Y()}catch{}},$=c(()=>z.value.some(e=>e.meta?.pageindex_status===`building`)),we=e=>e<1024?e+` B`:e<1048576?(e/1024
+=>[...c[7]||=[b(`Embedding（分块+向量）`,-1)]]),_:1}),g(h,{value:`pageindex`},{default:n(()=>[...c[8]||=[b(`PageIndex（树索引）`,-1)]]),_:1}
+g(w,{size:`small`,type:(e.meta?.index_type||`embedding`)===`pageindex`?`danger`:``},{default:n(()=>[b(f((e.meta?.index_type||`emb
+=== A6 DONE ===
+=== A6b 线上 chunk 指纹 ===
+c4c9ff349fd02ec4f7c81f0151f2a2ae97f49c43a33b56ac565f4fb42e538f53  03-testing/evidence/PI-V4_raw/online_KbDetailView.js
+-rw-rw-r-- 1 harry.zhang harry.zhang 9273 Oct 12 03:50 03-testing/evidence/PI-V4_raw/online_KbDetailView.js
+--- (1) indexType 默认值：minified `V=o(\`pageindex\`)` 上下文 ---
+oc-content-text`},F=E(l({__name:`KbDetailView`,setup(l){let E=A(),F=O(),I=x(),L=E.params.id,R=o(null),z=o([]),B=o(!1),V=o(`pageindex`),H=null,U=o(!1),W=o(!1),G=o(`rendered`),K=o({filename:``,file_type:``,content:``,chunk_count:0,meta:{}}),de=c(()=>{let e
+--- (2) radio 标签 Embedding / PageIndex 出现处 ---
+bedding`},{default:n(()=>[...c[7]||=[b(`Embedding（分块+向量）`,-1)]]),_:1}),g(h,{value:`pageindex`},{
+geindex`},{default:n(()=>[...c[8]||=[b(`PageIndex（树索引）`,-1)]]),_:1})]),_:1},8,[`modelValue`]),
+--- (3) 上传请求体里 indexType 的绑定（FormData append）---
+ses/${L}/documents`),pe=c(()=>({Authorization:`Bearer ${I.token}`})),me=c(()=>({index_type:V.value})),he=c(()=>z.value.some(e=>e.status===`parsing`||e.status===`chunking`
+failed:`danger`})[e.meta?.pageindex_status]||`info`,Ce=async e=>{let t=(e.meta?.index_type||`embedding`)===`pageindex`?`PageIndex 树索引（LLM 建树约 30-120s）`:`Embedding 分块+向量索引
+th:`120`,align:`center`},{default:n(({row:e})=>[g(w,{size:`small`,type:(e.meta?.index_type||`embedding`)===`pageindex`?`danger`:``},{default:n(()=>[b(f((e.meta?.index_typ
+--- (4) 源码侧对照（frontend/src/views/KbDetailView.vue）---
+22:        <el-radio-group v-model="indexType">
+26:        <span class="upload-options-desc" v-if="indexType === 'pageindex'">
+133:const indexType = ref<'embedding' | 'pageindex'>('pageindex')
+167:const uploadData = computed(() => ({ index_type: indexType.value }))
+--- 源码 sha256 ---
+836d82c40ddd86f2d9bcc7582b7e43e35f439029ec6790fad322a328235f98ed  frontend/src/views/KbDetailView.vue
+--- (5) 线上 chunk 是否含源码同款模板串 ---
+  literal "Embedding（分块+向量）" -> occurrences=1
+  literal "PageIndex（树索引）" -> occurrences=1
+  literal "无向量、基于层级树" -> occurrences=1
+无向量、基于层级树 + LLM 推理检索；上传后异步建树（约 30-120s），一个文档只建一种索引。 问答与检索时选择「智能」或「PageIndex」模式即可命中本类文档。 
+=== A6b DONE ===

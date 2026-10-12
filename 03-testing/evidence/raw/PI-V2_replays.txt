@@ -1,0 +1,16 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== 重放 PI-02 主查询 body × 4 ====
+[replay1] HTTP_CODE=200 TIME=2.296556s
+{"run":1,"total":0,"took_ms":2283,"hits":0,"titles":[]}
+[replay2] HTTP_CODE=200 TIME=3.603809s
+{"run":2,"total":0,"took_ms":3589,"hits":0,"titles":[]}
+[replay3] HTTP_CODE=200 TIME=12.833716s
+{"run":3,"total":1,"took_ms":12819,"hits":1,"titles":["班中抽检异常上报、附则与术语表"]}
+[replay4] HTTP_CODE=200 TIME=2.411689s
+{"run":4,"total":0,"took_ms":2396,"hits":0,"titles":[]}
+==== 重放 PI-03 主问答（retrieval_mode=pageindex）body × 2，只看 sources 数 ====
+[chat-replay1] HTTP_CODE=200 TIME=12.611487s
+[chat-replay1] sources={"sources": [{"chunk_id": "034cc16f-d230-4fca-beb1-04da2337cc2d", "document_id": "034cc16f-d230-4fca-beb1-04da2337cc2d", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.88, "metadata": {"node_id": "n1..2", "node_title": "班中抽检异常上报、附则与术语表", "char_start": 404, "char_end": 776, "truncated": false, "score_source": "llm_relevance"}}]}
+[chat-replay2] HTTP_CODE=200 TIME=8.005036s
+[chat-replay2] sources={"sources": [{"chunk_id": "034cc16f-d230-4fca-beb1-04da2337cc2d", "document_id": "034cc16f-d230-4fca-beb1-04da2337cc2d", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.82, "metadata": {"node_id": "n1..2", "node_title": "班中抽检异常上报、附则与术语表", "char_start": 404, "char_end": 776, "truncated": false, "score_source": "llm_relevance"}}, {"chunk_id": "034cc16f-d230-4fca-beb1-04da2337cc2d", "document_id": "034cc16f-d230-4fca-beb1-04da2337cc2d", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.54, "metadata": {"node_id": "n1..1", "node_title": "文档标题、总则与班前点检", "char_start": 0, "char_end": 404, "truncated": false, "score_source": "llm_relevance"}}]}
+==== 重放 DONE ====

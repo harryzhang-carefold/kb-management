@@ -1,0 +1,21 @@
+{
+  "case": "PI-08",
+  "run": "mode_pi",
+  "verdict": "PASS",
+  "fails": 0,
+  "kb_id": "22bcb345-8326-479c-958b-51daa2905715",
+  "query": "PI-TOKEN-7412",
+  "totals": {
+    "pageindex": 0
+  },
+  "checks": [
+    {
+      "id": "P1-pageindex",
+      "desc": "JSON-RPC 无 error（mode=pageindex）",
+      "expected": "false",
+      "actual": "false",
+      "verdict": "PASS"
+    }
+  ],
+  "generated_at": "2026-10-12T04:08:12Z"
+}

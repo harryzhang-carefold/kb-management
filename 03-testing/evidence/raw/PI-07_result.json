@@ -1,0 +1,91 @@
+{
+  "case": "PI-07",
+  "simulated": true,
+  "simulated_note": "模拟用例：真实存量为 0 篇无 index_type 文档（见 PI-V3_legacy_audit.json），本卡为人工删键复现",
+  "verdict": "PASS",
+  "fails": 0,
+  "kb_id": "52d96f8c-a5a5-4e49-be3c-d27764223c31",
+  "kb_name": "验证-兜底-legacy-VI-PI-3-034620",
+  "doc_id": "08aca631-ac36-451b-982e-ca0d05a697d0",
+  "vue_fallback_hits": 3,
+  "checks": [
+    {
+      "id": "C1a",
+      "desc": "上传后 meta.index_type 为 embedding",
+      "expected": "embedding",
+      "actual": "embedding",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C1b",
+      "desc": "上传后 status 为 indexed",
+      "expected": "indexed",
+      "actual": "indexed",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C1c",
+      "desc": "上传后 chunk_count > 0（actual=1）",
+      "expected": "gt0",
+      "actual": "gt0",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C2",
+      "desc": "删键后 GET 返回的 meta 不含 index_type（原样返回）",
+      "expected": "false",
+      "actual": "false",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C3",
+      "desc": "reindex 响应 data.index_type 为 embedding（无 index_type 兜底）",
+      "expected": "embedding",
+      "actual": "embedding",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C4a",
+      "desc": "reindex 后 status 为 indexed",
+      "expected": "indexed",
+      "actual": "indexed",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C4b",
+      "desc": "reindex 后 chunk_count > 0（actual=1）",
+      "expected": "gt0",
+      "actual": "gt0",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C5",
+      "desc": "search mode=vector 命中兜底文档口令",
+      "expected": "total>=1 && 命中>=1",
+      "actual": "total=2 hit=2",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C6",
+      "desc": "search mode=hybrid 命中兜底文档口令",
+      "expected": "total>=1 && 命中>=1",
+      "actual": "total=2 hit=2",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C7",
+      "desc": "前端显示/分流兜底 || 'embedding' 仍在",
+      "expected": ">=2",
+      "actual": "3",
+      "verdict": "PASS"
+    },
+    {
+      "id": "C8",
+      "desc": "MCP 9100 list_documents 显示兜底",
+      "expected": "-",
+      "actual": "NOT-RUN（归第4段）",
+      "verdict": "NOT-RUN"
+    }
+  ],
+  "generated_at": "2026-10-12T03:46:32Z"
+}

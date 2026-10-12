@@ -1,0 +1,26 @@
+{
+ "url": "https://agent.carefold.ai/kb-management/kb/22bcb345-8326-479c-958b-51daa2905715",
+ "radios": [
+  {
+   "text": "Embedding（分块+向量）",
+   "cls": "el-radio-button",
+   "isActive": false,
+   "inputChecked": false,
+   "inputValue": "embedding"
+  },
+  {
+   "text": "PageIndex（树索引）",
+   "cls": "el-radio-button is-active",
+   "isActive": true,
+   "inputChecked": true,
+   "inputValue": "pageindex"
+  }
+ ],
+ "descs": [
+  {
+   "text": "无向量、基于层级树 + LLM 推理检索；上传后异步建树（约 30-120s），一个文档只建一种索引。 问答与检索时选择「智能」或「PageIndex」模式即可命中本类文档。",
+   "visible": true
+  }
+ ],
+ "ls_token_len": 209
+}

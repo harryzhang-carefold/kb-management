@@ -1,0 +1,14 @@
+HTTP_CODE=200 TIME=0.003097s SIZE=4861
+{
+  "name": "search_knowledge",
+  "description": "在知识库中执行混合检索（向量 kNN + BM25 全文 + RRF 融合）。\n\n参数:\n  query:  搜索查询（自然语言或关键词）\n  kb_id:  知识库 UUID（与 name 二选一，不传则搜索所有知识库）\n  name:   知识库名称（与 kb_id 二选一）\n  mode:   检索模式: hybrid(混合) / vector(纯向量) / keyword(纯关键词)，默认 hybrid\n  top_k:  返回结果数量，默认 5（上限 100），避免工具输出过大触发 agent 截断\n\n返回: 命中的文档片段列表，包含 filename、chunk_index、content、score、match_type。\n",
+  "mode_enum": "<no enum>",
+  "mode_default": "hybrid",
+  "required": [
+    "query"
+  ]
+}
+--- pageindex 是否出现在该工具 schema 中 ---
+0
+0 次
+==== tools/list DONE ====

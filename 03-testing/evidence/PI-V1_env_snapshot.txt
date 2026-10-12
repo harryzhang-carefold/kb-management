@@ -1,0 +1,131 @@
+======================================================================
+PI-V1 环境快照 — kb-management / 上传默认索引方式 embedding→pageindex 独立验证
+采集人: 云天明(测试工程师)   卡: t_fa5d836a   性质: 只记录不干预
+采集时间(UTC):
+Mon Oct 12 03:26:53 UTC 2026
+======================================================================
+
+[1] 代码版本
+$ git rev-parse HEAD
+74287fa0535975386bcb13bbed8a54344d5525b0
+$ git branch --show-current
+feat/default-pageindex
+$ git status --short
+ M 03-testing/curl/README.md
+ M backend/app/api/chat.py
+ M backend/app/api/knowledge_bases.py
+ M backend/app/api/search.py
+ M backend/app/schemas/schemas.py
+ M backend/app/services/rag_engine.py
+ M frontend/src/api/index.ts
+ M frontend/src/views/KbDetailView.vue
+?? 01-product/
+?? 03-testing/curl/lib/
+?? 03-testing/evidence/
+?? 03-testing/fixtures_pi/
+?? backend/app/services/auto_retrieval.py
+?? backend/app/services/kb_index.py
+注: backend/app/** 与 frontend/src/views/KbDetailView.vue 的 M/?? 项由**并发卡 t_87e536bf**（同一后端）产生，非本卡改动；
+    本卡（t_fa5d836a）只新增 03-testing/{fixtures_pi,curl,evidence}/ 下文件与更新 03-testing/curl/README.md。
+
+[2] 关键进程 PID / 启动时间（9012 后端、9100 MCP、Celery queue=kb）
+$ ps -eo pid,lstart,etime,args | grep -E 'kb-management.*(uvicorn|celery)' | grep -v grep
+2382073 Mon Oct 12 00:43:24 2026    02:43:28 /home/harry.zhang/kb-management/backend/.venv/bin/python3 /home/harry.zhang/kb-management/backend/.venv/bin/uvicorn mcp_server:streamable_app --host 0.0.0.0 --port 9100 --log-level info --proxy-headers
+3043762 Mon Oct 12 03:05:40 2026       21:12 /home/harry.zhang/kb-management/backend/.venv/bin/python3 /home/harry.zhang/kb-management/backend/.venv/bin/celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q kb
+3043869 Mon Oct 12 03:05:41 2026       21:11 /home/harry.zhang/kb-management/backend/.venv/bin/python3 /home/harry.zhang/kb-management/backend/.venv/bin/celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q kb
+3043870 Mon Oct 12 03:05:41 2026       21:11 /home/harry.zhang/kb-management/backend/.venv/bin/python3 /home/harry.zhang/kb-management/backend/.venv/bin/celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2 -Q kb
+3056922 Mon Oct 12 03:12:10 2026       14:42 /home/harry.zhang/kb-management/backend/.venv/bin/python3 /home/harry.zhang/kb-management/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 9012 --log-level info
+过滤口径: 仅取本仓库路径(/home/harry.zhang/kb-management)下的 uvicorn/celery 进程；
+          机器上另有 9010/8080/9383 等其它项目服务，不属于本次验证对象，已排除。
+
+$ systemctl list-units --type=service | grep -iE 'kb|celery|uvicorn|mcp'
+(无 systemd 单元；上述进程为手工/脚本启动)
+
+[3] 关键端口监听
+$ ss -ltn | grep -E ':(9011|9012|9100|9200|9002|6390)'
+LISTEN 0      511          0.0.0.0:6390       0.0.0.0:*   
+LISTEN 0      4096         0.0.0.0:9002       0.0.0.0:*   
+LISTEN 0      4096         0.0.0.0:9011       0.0.0.0:*   
+LISTEN 0      2048         0.0.0.0:9012       0.0.0.0:*   
+LISTEN 0      4096         0.0.0.0:9200       0.0.0.0:*   
+LISTEN 0      2048         0.0.0.0:9100       0.0.0.0:*   
+LISTEN 0      511             [::]:6390          [::]:*   
+LISTEN 0      4096            [::]:9002          [::]:*   
+LISTEN 0      4096            [::]:9011          [::]:*   
+LISTEN 0      4096            [::]:9200          [::]:*   
+$ ss -ltnp | grep -E ':(9012|9100)'   # 带进程名
+LISTEN 0      2048         0.0.0.0:9012       0.0.0.0:*    users:(("uvicorn",pid=3056922,fd=18))
+LISTEN 0      2048         0.0.0.0:9100       0.0.0.0:*    users:(("uvicorn",pid=2382073,fd=15))
+注: PG/ES/MinIO/Redis 由 docker 容器持有，非本用户进程，ss -ltnp 不显示持有者（不影响连通性）。
+
+[4] 后端健康检查（9012）
+$ curl -sS -m 10 -w '<HTTP_CODE/TIME>' http://127.0.0.1:9012/api/v1/health
+{"code":0,"message":"ok","data":{"status":"degraded","services":{"postgresql":"ok","elasticsearch":"green","minio":"ok","redis":"ok","llm":"ok","embedding":"ok","mineru":"unreachable"},"version":"1.0.0"}}
+HTTP_CODE=200 TIME=0.411671s
+逐项: postgresql / elasticsearch / minio / redis / llm / embedding / mineru
+说明: 整体 status=degraded 由 mineru=unreachable 引起（历史已知，与本次默认索引方式改动无关）。
+
+[5] LLM / Embedding 服务与模型名（取值来源 infra/.env，为运行进程实际加载的配置）
+$ grep -E '^(APP_ENV|DEBUG|LLM_[A-Z_]+|EMBEDDING_[A-Z_]+|PAGEINDEX_LLM_MODEL)=' infra/.env
+APP_ENV=development
+DEBUG=true
+EMBEDDING_API_BASE=http://127.0.0.1:8100/v1
+EMBEDDING_BASE_URL=http://127.0.0.1:8100/v1
+EMBEDDING_MODEL=gte-qwen2
+EMBEDDING_DIM=3584
+EMBEDDING_TIMEOUT=60
+LLM_API_BASE=https://api.deepseek.com/v1
+LLM_MODEL=deepseek-flash
+LLM_TIMEOUT=120
+LLM_MAX_TOKENS=2048
+LLM_TEMPERATURE=0.2
+EMBEDDING_BATCH_SIZE=32
+LLM_BASE_URL=https://api.deepseek.com/v1
+PAGEINDEX_LLM_MODEL=deepseek-flash
+（API key 类变量一律不打印）
+$ grep -E '^(PG_|ES_|MINIO_|REDIS_)' infra/.env | grep -v -iE 'key|password|secret'
+PG_HOST=127.0.0.1
+PG_PORT=9011
+PG_USER=kb_admin
+PG_DB=kb_management
+ES_HOST=http://127.0.0.1:9200
+ES_INDEX=kb_chunks
+ES_EMBEDDING_DIM=3584
+MINIO_ENDPOINT=127.0.0.1:9002
+MINIO_BUCKET=kb-docs
+MINIO_SECURE=false
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6390
+健康探测: llm=ok, embedding=ok（见 [4]）；embedding 实际指向本机 8100 服务。
+
+[6] 登录可用性（只记 token 长度，不落盘 token）
+$ source 03-testing/curl/lib/kb_common.sh && kb_login
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+
+[7] DB 只读探针基线（03-testing/curl/lib/db_probe.py）
+$ backend/.venv/bin/python 03-testing/curl/lib/db_probe.py dist
+# db_probe mode=dist scope_kb=* (read-only)
+total_docs=97
+index_type  pageindex_status  status       count
+embedding   -                 failed          35
+embedding   -                 indexed         33
+pageindex   ok                indexed         26
+pageindex   degraded          indexed          2
+pageindex   -                 failed           1
+
+$ backend/.venv/bin/python 03-testing/curl/lib/db_probe.py by-kb | head -5
+# db_probe mode=by-kb scope_kb=* (read-only)
+kb_id                                  docs  pageindex  embedding  none  name
+77b260a7-3119-480e-bfe6-f39656e4cf32     12          0         12     0  nginx-bodylimit-selftest
+d3862f54-8886-47ff-8935-98888c5b8266      9          0          9     0  nginx-verify-yuntianming
+6f6b005a-e957-4380-8927-7d489125c42c      8          0          8     0  nginx-verify-yuntianming
+（完整 by-kb 输出见用例 5 卡 t_bbb32bcf 的证据档案）
+
+[8] 补充基线: 9012 openapi 中上传接口 index_type 的声明默认值
+$ curl -sS http://127.0.0.1:9012/openapi.json | jq '.components.schemas.Body_upload_doc_api_v1_knowledge_bases__kb_id__documents_post.properties.index_type'
+{"type":"string","pattern":"^(embedding|pageindex)$","title":"Index Type","default":"pageindex"}
+
+[9] 本次快照期间未执行的动作（只读约束）
+- 未修改 backend/frontend 任何代码；未重启 9012 / Celery / MCP / nginx；未改任何配置。
+- 仅进行: 读文件、读 DB(SELECT)、GET /health、GET /openapi.json、POST /auth/login 取 token(仅记长度)。
+======================================================================

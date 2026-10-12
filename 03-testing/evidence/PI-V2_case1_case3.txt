@@ -1,0 +1,107 @@
+########## PI-V2 证据全文 (t_32351222) ##########
+KB_ID=32b1101f-efd6-467c-900a-255c75656791
+开始(UTC): 2026-10-12T03:30:40Z
+KB 创建证据: 03-testing/evidence/raw/kb_create_PI-V2.json (2026-10-12T03:29:53Z)
+
+
+==================== PI-01 默认上传（不传 index_type） ====================
+[step-start 2026-10-12T03:30:40Z] PI-01 默认上传（不传 index_type）
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-01 上传（不传 index_type）====
+[req-form] file=@03-testing/fixtures_pi/pi_default_doc.md  ; index_type 字段: 未传（无 -F index_type=...）
+[req-form] 完整字段名清单: file
+[fixture] sha256=11321dc6870f37b6f4ab895937ee4074af6db19a2db607cccb729cd1a809a0a7
+
+HTTP_CODE=200 TIME=0.043671s
+[upload-raw] {"code":0,"message":"ok","data":{"document_id":"034cc16f-d230-4fca-beb1-04da2337cc2d","status":"uploaded","task_id":"278b62c5-2b41-43b4-ab2f-52e6b7f10356"}}
+[ids] document_id=034cc16f-d230-4fca-beb1-04da2337cc2d task_id=278b62c5-2b41-43b4-ab2f-52e6b7f10356
+==== PI-01 轮询 GET /documents/{id}（间隔 5s，上限 400s）====
+[poll 1] t=5s status=parsed pageindex_status=
+[poll 2] t=10s status=chunking pageindex_status=building
+[poll 3] t=15s status=chunking pageindex_status=building
+[poll 4] t=20s status=chunking pageindex_status=building
+[poll 5] t=25s status=chunking pageindex_status=building
+[poll 6] t=30s status=chunking pageindex_status=building
+[poll 7] t=35s status=chunking pageindex_status=building
+[poll 8] t=40s status=chunking pageindex_status=building
+[poll 9] t=45s status=chunking pageindex_status=building
+[poll 10] t=50s status=chunking pageindex_status=building
+[poll 11] t=55s status=chunking pageindex_status=building
+[poll 12] t=60s status=chunking pageindex_status=building
+[poll 13] t=65s status=chunking pageindex_status=building
+[poll 14] t=70s status=indexed pageindex_status=ok
+==== PI-01 关键字段 ====
+{"code":0,"status":"indexed","chunk_count":0,"index_type":"pageindex","pageindex_status":"ok","tree_status":"ok","tree_model":"deepseek-flash","node_count":3,"build_ms":64107,"full_text_chars":776,"root_title":"智能制造产线巡检手册","root_node_id":"n1","root_children_len":2,"root_start":0,"root_end":776}
+==== PI-01 契约对照 openapi.json ====
+HTTP_CODE=200
+[openapi] upload index_type default=pageindex
+==== PI-01 DONE (doc_id=034cc16f-d230-4fca-beb1-04da2337cc2d) ====
+[step-end 2026-10-12T03:31:46Z] PI-01 默认上传（不传 index_type） rc=0
+
+
+==================== PI-02 pageindex 检索 ====================
+[step-start 2026-10-12T03:31:46Z] PI-02 pageindex 检索
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-02 主查询 mode=pageindex top_k=3 ====
+
+HTTP_CODE=200 TIME=1.457761s
+[main] {"code":0,"total":0,"took_ms":1440,"message":null,"items":[]}
+==== PI-02 多问法命中率统计（记录数值，不单独判 FAIL）====
+[q1] total=0 含口令条目=0  q=追溯本次巡检批次时应该用哪个口令定位日志？
+[q2] total=0 含口令条目=0  q=PI-TOKEN-7412 这个口令是做什么用的？
+[q3] total=1 含口令条目=1  q=班中抽检发现异常后十五分钟内要做什么？
+[q4] total=3 含口令条目=2  q=巡检记录以什么为最小单位？
+[q5] total=3 含口令条目=2  q=点检和巡检有什么区别？
+[命中率] 3/5 = 60%
+==== PI-02 DONE ====
+[step-end 2026-10-12T03:32:04Z] PI-02 pageindex 检索 rc=0
+
+
+==================== PI-03 pageindex 问答(SSE)+观察项 ====================
+[step-start 2026-10-12T03:32:04Z] PI-03 pageindex 问答(SSE)+观察项
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-03 主查询 retrieval_mode=pageindex top_n=3 (SSE) ====
+
+HTTP_CODE=200 TIME=7.081123s
+[headers] HTTP/1.1 200 OK content-type: text/event-stream; charset=utf-8 
+[event-sequence] meta token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token sources done 
+[event-counts]       1 done       1 meta       1 sources      50 token 
+[sources] {"sources": [{"chunk_id": "034cc16f-d230-4fca-beb1-04da2337cc2d", "document_id": "034cc16f-d230-4fca-beb1-04da2337cc2d", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.82, "metadata": {"node_id": "n1..2", "node_title": "班中抽检异常上报、附则与术语表", "char_start": 404, "char_end": 776, "truncated": false, "score_source": "llm_relevance"}}]}
+[answer] 根据参考片段 [1]，追溯本次巡检批次时应使用口令 **PI-TOKEN-7412** 定位日志。需要注意：- 该口令**仅用于检索定位**，不参与任何权限校验与身份识别 [1]。
+
+==== PI-03 观察项：不传 retrieval_mode（走默认）时的 sources ====
+
+HTTP_CODE=200 TIME=2.771566s
+[obs-events] meta token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token token sources done 
+[obs-meta] {"conversation_id": "543114dd-292f-4c01-b1d1-0299899c9127", "notice": "未在 PageIndex 索引中检索到相关内容。请换一种问法（树索引对文档标题与小节更敏感）。"}
+[obs-sources] {"sources": []}
+==== PI-03 DONE ====
+[step-end 2026-10-12T03:32:14Z] PI-03 pageindex 问答(SSE)+观察项 rc=0
+
+[ALL DONE] 2026-10-12T03:32:14Z
+
+
+==================== 裁定汇总（本段 t_32351222） ====================
+用例1 (PI-01 默认上传不传 index_type):  PASS
+  证据: HTTP 200 / code=0 / index_type=pageindex / pageindex_status=ok(非降级) /
+        tree.status=ok / model=deepseek-flash / node_count=3 / build_ms=64107 /
+        doc.status=indexed / openapi default=pageindex
+  注: A6「root.title != 夹具 markdown 标题」字面不满足（root.title 恰等于夹具 H1），
+      但该断言已被证明无区分度（降级树 root.title 同样取 H1）。判 PASS 依据为 4 条独立反降级证据，
+      详见 03-testing/evidence/PI-V2_findings.md 与 PI-V2_result.json。
+
+用例3 (该文档 pageindex 检索/问答可用):
+  - 检索 search (mode=pageindex):   FAIL
+      首执 HTTP 200 但 total=0 / items=[] / 无条目含 PI-TOKEN-7412（message 字段缺省 → 库内确有 pageindex 文档）
+      同参重放 4 次 total=[0,0,1,0] → 1/4 命中；变体问法 5 条 3/5 命中 → 非确定性
+  - 问答 chat (retrieval_mode=pageindex):  PASS
+      SSE meta→token×50→sources→done；sources=1；答案含 PI-TOKEN-7412 且带 [1] 引用；重放 2 次 sources=1/2
+  - 用例3 整体裁定: FAIL（检索子项未满足硬断言）
+
+观察项（不判 FAIL）:  同一文档不传 retrieval_mode → sources=0 + meta.notice，
+  与开发自测口径一致（DEV_REPORT §5 P1）；属已上报既有 P1 产品决策错配（决策卡 t_9013e8b2），非本次回归。
+
+结构化逐条断言: 03-testing/evidence/PI-V2_result.json
+发现/BUG 记录:   03-testing/evidence/PI-V2_findings.md
+重放记录:        03-testing/evidence/raw/PI-V2_replays.txt
+===================================================================

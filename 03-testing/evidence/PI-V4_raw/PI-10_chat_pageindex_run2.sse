@@ -1,0 +1,162 @@
+event: meta
+data: {"conversation_id": "747419e7-1bd8-4536-a616-bf902095aa01"}
+
+event: token
+data: {"token": "根据"}
+
+event: token
+data: {"token": "参考"}
+
+event: token
+data: {"token": "片段"}
+
+event: token
+data: {"token": "，"}
+
+event: token
+data: {"token": "追溯"}
+
+event: token
+data: {"token": "本次"}
+
+event: token
+data: {"token": "巡检"}
+
+event: token
+data: {"token": "批次"}
+
+event: token
+data: {"token": "时应"}
+
+event: token
+data: {"token": "使用"}
+
+event: token
+data: {"token": "口令"}
+
+event: token
+data: {"token": " **"}
+
+event: token
+data: {"token": "PI"}
+
+event: token
+data: {"token": "-"}
+
+event: token
+data: {"token": "TO"}
+
+event: token
+data: {"token": "KEN"}
+
+event: token
+data: {"token": "-"}
+
+event: token
+data: {"token": "741"}
+
+event: token
+data: {"token": "2"}
+
+event: token
+data: {"token": "**"}
+
+event: token
+data: {"token": " "}
+
+event: token
+data: {"token": "定位"}
+
+event: token
+data: {"token": "日志"}
+
+event: token
+data: {"token": " ["}
+
+event: token
+data: {"token": "1"}
+
+event: token
+data: {"token": "]["}
+
+event: token
+data: {"token": "2"}
+
+event: token
+data: {"token": "]。\n\n"}
+
+event: token
+data: {"token": "需"}
+
+event: token
+data: {"token": "注意"}
+
+event: token
+data: {"token": "："}
+
+event: token
+data: {"token": "该"}
+
+event: token
+data: {"token": "口令"}
+
+event: token
+data: {"token": "仅"}
+
+event: token
+data: {"token": "用于"}
+
+event: token
+data: {"token": "检索"}
+
+event: token
+data: {"token": "定位"}
+
+event: token
+data: {"token": "，"}
+
+event: token
+data: {"token": "不"}
+
+event: token
+data: {"token": "参与"}
+
+event: token
+data: {"token": "任何"}
+
+event: token
+data: {"token": "权限"}
+
+event: token
+data: {"token": "校验"}
+
+event: token
+data: {"token": "与"}
+
+event: token
+data: {"token": "身份"}
+
+event: token
+data: {"token": "识别"}
+
+event: token
+data: {"token": " ["}
+
+event: token
+data: {"token": "1"}
+
+event: token
+data: {"token": "]["}
+
+event: token
+data: {"token": "2"}
+
+event: token
+data: {"token": "]。"}
+
+event: sources
+data: {"sources": [{"chunk_id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5", "document_id": "dd083cf9-96fb-4ea9-b3dc-e9d2ae35a8e5", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.95, "metadata": {"node_id": "n1..2", "node_title": "第2.2节至第4章：班中抽检、附则与术语表", "char_start": 403, "char_end": 776, "truncated": false, "score_source": "llm_relevance"}}, {"chunk_id": "30691711-1285-4164-be74-6bd38465d622", "document_id": "30691711-1285-4164-be74-6bd38465d622", "filename": "pi_default_doc.md", "chunk_index": 0, "score": 0.94, "metadata": {"node_id": "n1..2", "node_title": "2.2班中抽检与异常上报、第3章附则、第4章术语表", "char_start": 403, "char_end": 776, "truncated": false, "score_source": "llm_relevance"}}]}
+
+event: done
+data: {"token_count": 51, "finish_reason": "stop"}
+

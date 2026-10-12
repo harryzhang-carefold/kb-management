@@ -1,0 +1,14 @@
+[PI-08] mcp=http://127.0.0.1:9100/mcp kb_id=22bcb345-8326-479c-958b-51daa2905715 query=PI-TOKEN-7412 modes=[pageindex] key_len=48（不打印明文）
+==== PI-08 [mode_pi] 逐 mode 调用 tools/call search_knowledge ====
+--- mode=pageindex : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-pageindex] HTTP_CODE=200 TIME=0.008296s SIZE=385
+[mcp-pageindex] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-pageindex] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"pageindex\",\n  \"total\": 0,\n  \"took_ms\": 0,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"pageindex\",\n  \"total\": 0,\n  \"took_ms\": 0,\n  \"items\": []\n}"}}}  
+[P1-pageindex] PASS  JSON-RPC 无 error（mode=pageindex）  (expected=false actual=false)
+[mcp-pageindex] tool-result: {"query":"PI-TOKEN-7412","mode":"pageindex","total":0,"took_ms":0,"error":null}
+[mcp-pageindex] items: []
+PI08_MODE_pageindex_TOTAL=0
+==== PI-08 [mode_pi] 汇总 ====
+  pageindex: total=0  docs=[]
+[PI-08] result -> 03-testing/evidence/PI-V4_raw/PI-08_mode_pi_result.json
+==== PI-08 [mode_pi] DONE ====

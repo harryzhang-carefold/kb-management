@@ -1,0 +1,75 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-06 前置状态（只读）====
+HTTP_CODE=200
+HTTP_CODE=404
+[pre S-EMB] {"file":"test.txt","status":"indexed","chunk_count":1,"index_type":"embedding","has_tree":false,"uploaded_at":"2026-10-12T03:12:53.953505"}
+[pre S-PI ] {"file":null,"status":null,"chunk_count":null,"index_type":null,"pageindex_status":null,"has_tree":false}
+DOC 99c37b1e-7183-4b1b-902d-e22c9070db82 file=test.txt status=indexed chunk_count=1 index_type=embedding pi_status=None has_tree=False up=2026-10-12 03:12:53.953505
+  chunk_rows_total=1
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'
+==== PI-06 B1: 存量 embedding 文档 reindex ====
+HTTP_CODE=200 TIME=0.038268s
+{"code":0,"message":"ok","data":{"task_id":"e6d52c02-1706-4738-adf0-eef945400e7c","index_type":"embedding"}}
+[B1] PASS  reindex 响应 data.index_type 为 embedding（兜底分流）  (expected=embedding actual=embedding)
+==== PI-06 B2: 同文档 pageindex/rebuild 应被拒绝 ====
+HTTP_CODE=400 TIME=0.017103s
+{"code":40001,"message":"该文档不是 PageIndex 索引方式，请使用“重建索引”按文档索引方式执行","data":null}
+[B2a] PASS  pageindex/rebuild 返回 HTTP 400  (expected=400 actual=400)
+[B2b] PASS  错误信息含「不是 PageIndex 索引方式」  (expected=yes actual=yes)
+==== PI-06 B3: 轮询重建后的存量 embedding 文档 ====
+[poll-emb 1] t=5s status=embedding index_type=embedding chunk_count=1
+[poll-emb 2] t=10s status=indexed index_type=embedding chunk_count=1
+{"code":0,"status":"indexed","chunk_count":1,"index_type":"embedding","has_tree":false,"error_message":null}
+[B3a] PASS  重建后 status 为 indexed  (expected=indexed actual=indexed)
+[B3b] PASS  重建后 chunk_count > 0（actual=1）  (expected=gt0 actual=gt0)
+[B3c] PASS  重建后 meta.index_type 仍为 embedding（未被改写）  (expected=embedding actual=embedding)
+==== PI-06 B4: 重建后向量检索仍命中该文档既有内容 ====
+HTTP_CODE=200 TIME=0.081383s
+[search-vector] total=2 命中目标文档=2 items=[{"document_id":"99c37b1e-7183-4b1b-902d-e22c9070db82","filename":"test.txt","score":0.957152,"match_type":"vector"},{"document_id":"99c37b1e-7183-4b1b-902d-e22c9070db82","filename":"test.txt","score":0.957152,"match_type":"vector"}]
+[B4] PASS  search mode=vector (total=2 hit=2)
+DOC 99c37b1e-7183-4b1b-902d-e22c9070db82 file=test.txt status=indexed chunk_count=1 index_type=embedding pi_status=None has_tree=False up=2026-10-12 03:12:53.953505
+  chunk_rows_total=2
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'
+  [c0 len=138] '知识库管理系统是一个用于存储、检索和问答的智能系统。它支持文档上传、自动解析、分块、向量化和全文索引。用户可以使用自然语言提问，系统会基于检索到的片段生成带引用的回答。部署时需要 PostgreSQL、Elasticsearch、MinIO 和 Redis 四个基础设施组件。'
+==== PI-06 B5: 存量 pageindex 文档 reindex ====
+HTTP_CODE=404 TIME=0.010496s
+{"code":40401,"message":"知识库不存在","data":null}
+[B5a] FAIL  存量 pageindex 文档 reindex 响应 index_type 为 pageindex  (expected=pageindex actual=<absent>)
+[poll-pi 1] t=5s status=- pageindex_status=
+[poll-pi 2] t=10s status=- pageindex_status=
+[poll-pi 3] t=15s status=- pageindex_status=
+[poll-pi 4] t=20s status=- pageindex_status=
+[poll-pi 5] t=25s status=- pageindex_status=
+[poll-pi 6] t=30s status=- pageindex_status=
+[poll-pi 7] t=35s status=- pageindex_status=
+[poll-pi 8] t=40s status=- pageindex_status=
+[poll-pi 9] t=45s status=- pageindex_status=
+[poll-pi 10] t=50s status=- pageindex_status=
+[poll-pi 11] t=55s status=- pageindex_status=
+[poll-pi 12] t=60s status=- pageindex_status=
+[poll-pi 13] t=65s status=- pageindex_status=
+[poll-pi 14] t=70s status=- pageindex_status=
+[poll-pi 15] t=75s status=- pageindex_status=
+[poll-pi 16] t=80s status=- pageindex_status=
+[poll-pi 17] t=85s status=- pageindex_status=
+[poll-pi 18] t=90s status=- pageindex_status=
+[poll-pi 19] t=95s status=- pageindex_status=
+[poll-pi 20] t=100s status=- pageindex_status=
+[poll-pi 21] t=105s status=- pageindex_status=
+[poll-pi 22] t=110s status=- pageindex_status=
+[poll-pi 23] t=115s status=- pageindex_status=
+[poll-pi 24] t=120s status=- pageindex_status=
+[poll-pi 25] t=125s status=- pageindex_status=
+[poll-pi 26] t=130s status=- pageindex_status=
+[poll-pi 27] t=135s status=- pageindex_status=
+[poll-pi 28] t=140s status=- pageindex_status=
+[poll-pi 29] t=145s status=- pageindex_status=
+[poll-pi 30] t=150s status=- pageindex_status=
+[poll-pi 31] t=155s status=- pageindex_status=
+[poll-pi 32] t=160s status=- pageindex_status=
+[poll-pi 33] t=165s status=- pageindex_status=
+[poll-pi 34] t=170s status=- pageindex_status=
+[poll-pi 35] t=175s status=- pageindex_status=
+[poll-pi 36] t=180s status=- pageindex_status=
+[poll-pi 37] t=185s status=- pageindex_status=
+[poll-pi 38] t=190s status=- pageindex_status=

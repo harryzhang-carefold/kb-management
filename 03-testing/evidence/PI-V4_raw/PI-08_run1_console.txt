@@ -1,0 +1,32 @@
+[PI-08] mcp=http://127.0.0.1:9100/mcp kb_id=22bcb345-8326-479c-958b-51daa2905715 query=PI-TOKEN-7412 modes=[hybrid vector keyword] key_len=48（不打印明文）
+==== PI-08 [run1] 逐 mode 调用 tools/call search_knowledge ====
+--- mode=hybrid : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-hybrid] HTTP_CODE=200 TIME=0.118696s SIZE=381
+[mcp-hybrid] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-hybrid] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"hybrid\",\n  \"total\": 0,\n  \"took_ms\": 12,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"hybrid\",\n  \"total\": 0,\n  \"took_ms\": 12,\n  \"items\": []\n}"}}}  
+[P1-hybrid] PASS  JSON-RPC 无 error（mode=hybrid）  (expected=false actual=false)
+[mcp-hybrid] tool-result: {"query":"PI-TOKEN-7412","mode":"hybrid","total":0,"took_ms":12,"error":null}
+[mcp-hybrid] items: []
+PI08_MODE_hybrid_TOTAL=0
+--- mode=vector : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-vector] HTTP_CODE=200 TIME=0.045662s SIZE=379
+[mcp-vector] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-vector] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"vector\",\n  \"total\": 0,\n  \"took_ms\": 5,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"vector\",\n  \"total\": 0,\n  \"took_ms\": 5,\n  \"items\": []\n}"}}}  
+[P1-vector] PASS  JSON-RPC 无 error（mode=vector）  (expected=false actual=false)
+[mcp-vector] tool-result: {"query":"PI-TOKEN-7412","mode":"vector","total":0,"took_ms":5,"error":null}
+[mcp-vector] items: []
+PI08_MODE_vector_TOTAL=0
+--- mode=keyword : POST http://127.0.0.1:9100/mcp (JSON-RPC tools/call) ---
+[mcp-keyword] HTTP_CODE=200 TIME=0.015309s SIZE=381
+[mcp-keyword] headers: HTTP/1.1 200 OK content-type: text/event-stream 
+[mcp-keyword] raw_head: event: message data: {"jsonrpc":"2.0","id":1,"result":{"content":[{"text":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"keyword\",\n  \"total\": 0,\n  \"took_ms\": 4,\n  \"items\": []\n}","type":"text"}],"isError":false,"structuredContent":{"result":"{\n  \"query\": \"PI-TOKEN-7412\",\n  \"mode\": \"keyword\",\n  \"total\": 0,\n  \"took_ms\": 4,\n  \"items\": []\n}"}}}  
+[P1-keyword] PASS  JSON-RPC 无 error（mode=keyword）  (expected=false actual=false)
+[mcp-keyword] tool-result: {"query":"PI-TOKEN-7412","mode":"keyword","total":0,"took_ms":4,"error":null}
+[mcp-keyword] items: []
+PI08_MODE_keyword_TOTAL=0
+==== PI-08 [run1] 汇总 ====
+  hybrid: total=0  docs=[]
+  vector: total=0  docs=[]
+  keyword: total=0  docs=[]
+[PI-08] result -> 03-testing/evidence/PI-V4_raw/PI-08_run1_result.json
+==== PI-08 [run1] DONE ====

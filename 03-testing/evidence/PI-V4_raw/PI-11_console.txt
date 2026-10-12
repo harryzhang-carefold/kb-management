@@ -1,0 +1,13 @@
+[kb_login] OK HTTP_CODE=200 user=admin token_len=209 base=http://127.0.0.1:9012
+==== PI-11 反向对照：显式 index_type=embedding 上传 ====
+[req-form] file=@03-testing/fixtures_pi/pi_default_doc.md ; index_type=embedding（显式）
+[fixture] sha256=11321dc6870f37b6f4ab895937ee4074af6db19a2db607cccb729cd1a809a0a7
+
+HTTP_CODE=200 TIME=0.038121s
+[upload] {"code":0,"message":"ok","data":{"document_id":"9c8f8743-5409-413b-87af-567fab0cb7e0","status":"uploaded","task_id":"43ec7404-ecf1-43ea-938a-5e9b0c1edec0"}}
+[ids] doc_embedding=9c8f8743-5409-413b-87af-567fab0cb7e0
+[poll 1] t=4s status=parsed index_type=embedding chunk_count=0
+[poll 2] t=8s status=indexed index_type=embedding chunk_count=2
+{"code":0,"status":"indexed","chunk_count":2,"index_type":"embedding","has_tree":false}
+PI11_DOC_EMBEDDING=9c8f8743-5409-413b-87af-567fab0cb7e0
+==== PI-11 DONE ====

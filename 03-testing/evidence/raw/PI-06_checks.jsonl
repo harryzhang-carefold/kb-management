@@ -1,0 +1,10 @@
+{"id":"B1","desc":"reindex 响应 data.index_type 为 embedding（兜底分流）","expected":"embedding","actual":"embedding","verdict":"PASS"}
+{"id":"B2a","desc":"pageindex/rebuild 返回 HTTP 400","expected":"400","actual":"400","verdict":"PASS"}
+{"id":"B2b","desc":"错误信息含「不是 PageIndex 索引方式」","expected":"yes","actual":"yes","verdict":"PASS"}
+{"id":"B3a","desc":"重建后 status 为 indexed","expected":"indexed","actual":"indexed","verdict":"PASS"}
+{"id":"B3b","desc":"重建后 chunk_count > 0（actual=1）","expected":"gt0","actual":"gt0","verdict":"PASS"}
+{"id":"B3c","desc":"重建后 meta.index_type 仍为 embedding（未被改写）","expected":"embedding","actual":"embedding","verdict":"PASS"}
+{"id":"B4","desc":"重建后 mode=vector 命中目标文档既有内容","expected":"total>=1 && 命中目标>=1","actual":"total=3 hit=3","verdict":"PASS"}
+{"id":"B5a","desc":"存量 pageindex 文档 reindex 响应 index_type 为 pageindex","expected":"pageindex","actual":"pageindex","verdict":"PASS"}
+{"id":"B5b","desc":"存量 pageindex 文档重建后 pageindex_status 为 ok","expected":"ok","actual":"ok","verdict":"PASS"}
+{"id":"B5c","desc":"存量 pageindex 文档重建后 index_type 仍为 pageindex","expected":"pageindex","actual":"pageindex","verdict":"PASS"}

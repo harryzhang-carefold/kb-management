@@ -1,0 +1,141 @@
+event: meta
+data: {"conversation_id": "543114dd-292f-4c01-b1d1-0299899c9127", "notice": "未在 PageIndex 索引中检索到相关内容。请换一种问法（树索引对文档标题与小节更敏感）。"}
+
+event: token
+data: {"token": "知识"}
+
+event: token
+data: {"token": "库"}
+
+event: token
+data: {"token": "中"}
+
+event: token
+data: {"token": "未"}
+
+event: token
+data: {"token": "找到"}
+
+event: token
+data: {"token": "相关内容"}
+
+event: token
+data: {"token": "。\n\n"}
+
+event: token
+data: {"token": "【"}
+
+event: token
+data: {"token": "参考"}
+
+event: token
+data: {"token": "片段"}
+
+event: token
+data: {"token": "】"}
+
+event: token
+data: {"token": "为空"}
+
+event: token
+data: {"token": "，"}
+
+event: token
+data: {"token": "因此"}
+
+event: token
+data: {"token": "无法"}
+
+event: token
+data: {"token": "确定"}
+
+event: token
+data: {"token": "追溯"}
+
+event: token
+data: {"token": "本次"}
+
+event: token
+data: {"token": "巡检"}
+
+event: token
+data: {"token": "批次"}
+
+event: token
+data: {"token": "时应"}
+
+event: token
+data: {"token": "使用"}
+
+event: token
+data: {"token": "哪个"}
+
+event: token
+data: {"token": "口令"}
+
+event: token
+data: {"token": "来"}
+
+event: token
+data: {"token": "定位"}
+
+event: token
+data: {"token": "日志"}
+
+event: token
+data: {"token": "。"}
+
+event: token
+data: {"token": "建议"}
+
+event: token
+data: {"token": "补充"}
+
+event: token
+data: {"token": "相关"}
+
+event: token
+data: {"token": "操作"}
+
+event: token
+data: {"token": "手册"}
+
+event: token
+data: {"token": "、"}
+
+event: token
+data: {"token": "巡检"}
+
+event: token
+data: {"token": "规范"}
+
+event: token
+data: {"token": "或"}
+
+event: token
+data: {"token": "日志"}
+
+event: token
+data: {"token": "查询"}
+
+event: token
+data: {"token": "说明"}
+
+event: token
+data: {"token": "后再"}
+
+event: token
+data: {"token": "行"}
+
+event: token
+data: {"token": "查询"}
+
+event: token
+data: {"token": "。"}
+
+event: sources
+data: {"sources": []}
+
+event: done
+data: {"token_count": 44, "finish_reason": "stop"}
+
