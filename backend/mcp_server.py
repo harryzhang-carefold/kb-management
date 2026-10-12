@@ -105,6 +105,62 @@ def _docs_mapping(doc_ids: list) -> dict:
         db.close()
 
 
+# V2 BUG-1（t_419b2e13）：carefold-agent 对 >8000 字符的工具输出做 observation
+# 截断（只回传 ~1500 字符预览 + 标记），导致 saas 后端 json.loads 失败、引用丢失。
+# 根因治理：把每个检索项的 content 截断到 ≤ _CITATION_CONTENT_MAX，使整条工具输出
+# 在 top_k≤10 时稳定 < 8000 字符阈值，从源头避免截断。content 只是给 LLM 看片段
+# 摘要 + 前端展示的，引用契约（doc_url/location）不依赖 content 长度。
+_CITATION_CONTENT_MAX = 400
+
+
+def _trim_items_content(items: list) -> list:
+    """原地把每个 item 的 content 截断到 ≤ _CITATION_CONTENT_MAX 字符。
+
+    超过则截断并追加 "…" 标记，保证下游（agent observation 阈值 / LLM 上下文 /
+    前端展示）不会因长片段撑爆工具输出。对无 content 或非 dict 的项原样保留。
+    """
+    for it in items:
+        if isinstance(it, dict):
+            c = it.get("content")
+            if isinstance(c, str) and len(c) > _CITATION_CONTENT_MAX:
+                it["content"] = c[:_CITATION_CONTENT_MAX].rstrip() + "…"
+    return items
+
+
+def _order_items_for_truncation(items: list) -> list:
+    """BUG-1（t_419b2e13）：把引用契约字段排在 item **前部**、唯一长字段 content
+    放**末尾**，且必须在 _attach_citations **之后**调用（attach 把 location/doc_url
+    追加到 item 末尾，重排让它们挪到 content 前面）。
+
+    这样若 agent 仍对工具输出做 observation 截断（top_k 显式传大 / 长文档），
+    截断只会切断末尾的 content，前面每条 item 的引用字段完整保留在预览里，
+    saas 后端 _salvage_citations_from_preview 可从中抢救。content 仅给 LLM 看
+    片段摘要，放最后不影响引用契约。
+    """
+    front_keys = [
+        "chunk_id", "id", "document_id", "filename", "chunk_index", "score",
+        "match_type", "metadata", "token_count", "location", "doc_url",
+    ]
+    reordered = []
+    for it in items:
+        if not isinstance(it, dict):
+            reordered.append(it)
+            continue
+        ordered = {}
+        for k in front_keys:
+            if k in it:
+                ordered[k] = it[k]
+        for k, v in it.items():
+            if k not in ordered:
+                ordered[k] = v
+        if "content" in ordered:
+            # content 强制放最后
+            content_val = ordered.pop("content")
+            ordered["content"] = content_val
+        reordered.append(ordered)
+    return reordered
+
+
 def _attach_citations(kb_id: Optional[str], items: list) -> list:
     """V2 §2.1 契约：为检索结果项补 doc_url + location（集中签发 view_token）。
 
@@ -274,7 +330,11 @@ def search_knowledge(
     kb_id: Optional[str] = None,
     name: Optional[str] = None,
     mode: str = "hybrid",
-    top_k: int = 10,
+    # V2 BUG-1（t_419b2e13）：默认 top_k 10→5。agent 对 >8000 字符工具输出做
+    # observation 截断；即便单条 content 已截断到 400，10 条 + doc_url 仍接近阈值，
+    # 降到 5 使默认检索稳定落在阈值内（引用主路径可靠）。用户仍可显式传更大 top_k，
+    # 后端 _trim_items_content 兜底。
+    top_k: int = 5,
 ) -> str:
     """在知识库中执行混合检索（向量 kNN + BM25 全文 + RRF 融合）。
 
@@ -283,7 +343,7 @@ def search_knowledge(
       kb_id:  知识库 UUID（与 name 二选一，不传则搜索所有知识库）
       name:   知识库名称（与 kb_id 二选一）
       mode:   检索模式: hybrid(混合) / vector(纯向量) / keyword(纯关键词)，默认 hybrid
-      top_k:  返回结果数量，默认 10，最大 100
+      top_k:  返回结果数量，默认 5（上限 100），避免工具输出过大触发 agent 截断
 
     返回: 命中的文档片段列表，包含 filename、chunk_index、content、score、match_type。
     """
@@ -336,6 +396,8 @@ def search_knowledge(
     all_hits.sort(key=lambda x: x.get("score", 0), reverse=True)
     all_hits = all_hits[:top_k]
 
+    # 字段顺序由 _order_items_for_truncation（BUG-1）在 attach 后统一重排：
+    # 引用字段在前、唯一长字段 content 在最后，保证 agent 截断时引用字段不丢。
     items = [
         {
             "chunk_id": h["chunk_id"],
@@ -353,7 +415,11 @@ def search_knowledge(
     # 引用契约（V2 §2.1）：doc_url + location。
     # 必须在 items 组装**之后**调用——attach 是原地给 dict 加键，若先 attach 原始 hits
     # 再重建 items 字段白名单，doc_url/location 会被丢弃（前次实现即此 bug）。
+    # BUG-1：先截断 content 再 attach；attach 后再重排，让引用字段在前、content 在最后，
+    # 保证 agent observation 截断时引用字段仍完整保留在预览里。
+    items = _trim_items_content(items)
     items = _attach_citations(None, items)
+    items = _order_items_for_truncation(items)
 
     return json.dumps({
         "query": query,
@@ -429,7 +495,10 @@ def rag_query(
         return json.dumps({"error": error_msg}, ensure_ascii=False)
 
     # 引用契约（V2 §2.1）：sources 补 doc_url + location
+    # BUG-1：先截断 content 再 attach；attach 后重排让引用字段在前、content 在最后。
+    sources = _trim_items_content(sources)
     sources = _attach_citations(str(kb.id), sources)
+    sources = _order_items_for_truncation(sources)
 
     return json.dumps({
         "question": question,
@@ -533,19 +602,26 @@ def get_document_chunks(
             .all()
         )
 
+        # BUG-1（t_419b2e13）：content 放 item 末尾，截断时保留引用字段。
         items = [
             {
                 "id": str(c.id),
                 "document_id": str(doc.id),
+                # OBS-1（t_419b2e13）：chunks 项补 filename（与 search_knowledge 一致），
+                # 避免前端引用条目显示无名。
+                "filename": doc.filename,
                 "chunk_index": c.chunk_index,
-                "content": c.content,
                 "token_count": c.token_count,
                 "metadata": c.chunk_meta,
+                "content": c.content,
             }
             for c in chunks
         ]
         # 引用契约（V2 §2.1）：chunks 项同样补 doc_url + location
+        # BUG-1：先截断 content 再 attach；attach 后重排让引用字段在前、content 在最后。
+        items = _trim_items_content(items)
         items = _attach_citations(str(doc.kb_id), items)
+        items = _order_items_for_truncation(items)
 
         return json.dumps({
             "document_id": str(doc.id),
