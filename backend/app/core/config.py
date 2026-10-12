@@ -92,12 +92,12 @@ class Settings(BaseSettings):
     embedding_dim: int = 3584
 
     # ---- LLM ----
-    llm_base_url: str = "http://34.121.9.233:4000/v1"
+    llm_base_url: str = "https://api.deepseek.com/v1"
     llm_api_key: Optional[str] = None
-    llm_model: str = "default"
+    llm_model: str = "deepseek-flash"
 
     # ---- PageIndex（无向量、树索引 + LLM 推理检索）----
-    pageindex_llm_model: str = "vllm-qwen3.8-27b"  # 建树/检索推理专用模型（复用 llm_base_url/api_key）
+    pageindex_llm_model: str = "deepseek-flash"  # 建树/检索推理专用模型（复用 llm_base_url/api_key）
     pageindex_build_timeout: int = 300    # 建树单次 LLM 调用超时（秒）
     pageindex_retrieve_timeout: int = 60  # 检索推理单次 LLM 调用超时（秒）
 

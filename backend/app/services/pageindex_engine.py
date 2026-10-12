@@ -1,7 +1,8 @@
 """PageIndex 引擎：无向量、层级树索引 + LLM 推理检索（自实现，不用官方 SDK）。
 
 设计见 00-management-PAGEINDEX_DESIGN.md：
-- 建树：LLM（vllm-qwen3.8-27b）从 document.full_text 生成层级树（2-4 层），
+- 建树：LLM（模型名走 settings.pageindex_llm_model，当前 deepseek-flash）从
+  document.full_text 生成层级树（2-4 层），
   节点含 title/summary/字符偏移 [start,end)，存 document.meta["pageindex_tree"]。
   失败降级为 heading 规则树（status=degraded）。
 - 检索：KB 内所有已建树文档拼 outline → 单次 LLM 联合推理选 top-n 节点 →

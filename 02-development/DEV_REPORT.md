@@ -429,3 +429,111 @@ location: {"type": "chunk", "value": 1}        # embedding 文档
 - **主提交：`1d0980d`**（16 files，+1647/-25）：`feat: 文档引用元数据+深链定位+view_token+MCP 鉴权+9100 常驻`
 - 已 `git push origin feat/kb-citations`（远端新分支，PR 入口：https://github.com/harryzhang-carefold/kb-management/pull/new/feat/kb-citations）。
 - 不含 bug 修复 t_670a7d8a 的改动（其已单独提交 `edf8ca4`，本提交未触碰其文件）。
+
+---
+
+## LLM 切换到 DeepSeek（t_3cdebd1f，分支 feat/default-pageindex，2026-10-12）
+
+**背景**：kb-management 依赖的 vllm 端点已下线，实测两个旧端点均不可达（TCP timeout、HTTP 000）。本次把 **LLM（PageIndex 建树 + RAG 问答）** 切到 DeepSeek（用户指定）。embedding 不在本次范围。
+
+### 1. 改动（diff）
+
+| 文件 | 改动 |
+|---|---|
+| `backend/app/core/config.py` | 默认值三处：`llm_base_url` `http://34.121.9.233:4000/v1` → `https://api.deepseek.com/v1`；`llm_model` `default` → `deepseek-flash`；`pageindex_llm_model` `vllm-qwen3.8-27b` → `deepseek-flash` |
+| `infra/.env`（**不进 git**） | 写入 `LLM_API_KEY`（来自指定密钥文件，35 字符 sk- 前缀）；新增/对齐 `LLM_BASE_URL=https://api.deepseek.com/v1`、`LLM_API_BASE`（旧名，代码不读，仅为不误导）、`LLM_MODEL=deepseek-flash`、`PAGEINDEX_LLM_MODEL=deepseek-flash`；文件权限收紧 0600 |
+| `infra/.env.example` | LLM 段落补 `LLM_BASE_URL`/`PAGEINDEX_LLM_MODEL`，`LLM_MODEL` 由空值改 `deepseek-flash`，并把**曾提交进 git 的真实 key 改为占位**（见已知问题 3） |
+| `backend/app/services/pageindex_engine.py` | 仅文档字符串里写死的 `vllm-qwen3.8-27b` → “模型名走 settings.pageindex_llm_model，当前 deepseek-flash”（零逻辑改动） |
+| `scripts/start_backend.sh` | **顺带修复的部署阻塞 bug**：redis 预检硬编码 `127.0.0.1:6179` + 旧密码，而实际 redis 在 `6390`（.env：`REDIS_PORT=6390`，无密码）→ `set -e` 下脚本必然退出，`DEPLOY.md §5` 的“手动恢复 9012”路径实际不可用。改为从 `settings` 读取（不硬编码、不打印密码） |
+
+**注**：任务书写“密钥写入项目根 `.env`”，实际代码读的是 **`infra/.env`**（`config.py:10` `parents[3]/infra/.env`）；密钥写进项目根 `.env` 不会生效。已按真实生效路径写入 `infra/.env`（两者都被 `.gitignore` 忽略）。
+
+未改（红线）：`embedding_base_url`/embedding 相关配置、embedding 路径、`feat/pageindex` 与 `feat/kb-citations` 已有语义、`.env` 之外的任何 key 存放。
+
+### 2. 部署（重启加载新配置）
+
+```bash
+# 后端 API 9012（新 .env + 新 config.py 需重启；MCP 9100 不依赖 LLM，无需重启）
+cd /home/harry.zhang/kb-management && bash scripts/start_backend.sh
+# Celery（pageindex 建树在 worker 内执行，必须重启）
+bash scripts/start_worker.sh
+```
+- 两者均为 host 进程（本机无 systemd），起停方式与 `DEPLOY.md §5` 一致；本次以 `persist_on_release` 后台方式拉起。
+- 实例：后端 9012（uvicorn，`backend/.venv`），Celery（`-Q kb --concurrency=2`，broker `redis://127.0.0.1:6390/3`）。
+- 校验：`ss -ltn | grep :9012`（LISTEN）+ `GET /api/v1/health`（llm=ok）。
+- 台账：`~/hermes-workspace/shared/infrastructure/SERVER_REGISTRY.md` 已按实测回写（LLM vLLM 行标记 deprecated、新增 DeepSeek 行、记录本次重启）。
+
+### 3. 自测证据（全部真实运行，2026-10-12 UTC；脚本在 `05-temp/`，不进 git）
+
+**证据 1 — settings 生效 + LLM 真调用**（`05-temp/t_3cdebd1f_check_settings.py`）
+```
+llm_base_url       = https://api.deepseek.com/v1
+llm_model          = deepseek-flash
+pageindex_llm_model= deepseek-flash
+llm_api_key        = SET(len=35, sk- prefix)          # 不打印明文
+llm_client.health() = True  (0.35s)
+/v1/models 该 key 可见 = ["deepseek-flash", "deepseek-v4-pro"]
+最小 chat (json_mode, pageindex_llm_model) 0.82s → '{"ok": true}'
+```
+
+**证据 2 — 系统健康接口 llm=ok**（`GET /api/v1/health`，system.py:50 的 llm 健康检查）
+```
+本地直连 9012:
+{"status":"degraded","services":{"postgresql":"ok","elasticsearch":"green","minio":"ok",
+ "redis":"ok","llm":"ok","embedding":"ok","mineru":"unreachable"}}
+经 nginx 公网 https://agent.carefold.ai/kb-management/api/v1/health → 同上（llm=ok）；前端 /kb-management/ → 200
+```
+（整体 `degraded` 仅因 mineru 未起，见已知问题 1；llm、embedding 均 ok。）
+
+**证据 3 — PageIndex 真实建树（DeepSeek，非降级规则树）**
+（`05-temp/t_3cdebd1f_e2e_pageindex_rag.py`：登录/签 token → 建 KB → 上传 `index_type=pageindex` → 轮询建树）
+```
+KB  c6b82a44-9656-487d-a27f-1beabae18bb3
+doc 88616ba1-6a7b-4003-8a19-3ae9891c1d1d  t_3cdebd1f_pi_doc.md  1076 bytes / 483 字
+poll: status=chunking(0~21s) → indexed(t=24s)，pageindex_status: building → ok
+document.status       = indexed
+meta.index_type       = pageindex
+meta.pageindex_status = ok              ← ok = LLM 真实建树（degraded 才是规则降级树）
+tree.model            = deepseek-flash  ← 建树记录在树上，确认走 DeepSeek
+tree.node_count       = 2      tree.piece_count = 1
+tree.build_ms         = 25815  tree.full_text_chars = 483
+tree.version/status   = 1/ok
+root  n1  北极星项目技术白皮书（摘要）[0,483]
+  └─  n1..1  北极星项目技术白皮书（摘要）全文 [0,483]
+```
+
+**证据 4 — RAG 流式问答（pageindex 与默认 hybrid 两条路径都走通）**
+```
+(a) retrieval_mode=pageindex（同一 KB/文档）
+    POST /knowledge-bases/{kb}/chat  HTTP 200
+    SSE events = {meta:1, token:32, sources:1, done:1, error:0}
+    来源: t_3cdebd1f_pi_doc.md  node=n1..1  title='…全文'  score=0.98  range=[0,483]
+    答案（55 字，5.54s）：总负责人=林澈[1]，验收口令=紫罗兰-7391[1]   ← 与文档一致
+(b) 默认 hybrid（embedding + ES，KB 77b260a7，含 1618 chunk 的 embedding 文档）
+    SSE events = {meta:1, token:91, sources:1, done:1}，来源 3 条，答案 174 字（2.21s），内容正确
+(c) 仓库既有端到端脚本 tests/e2e_test.py → 8/8 全 PASS（含 hybrid 检索 + RAG 流式 + 会话落库）
+```
+→ `llm_client.chat()`（pageindex 建树/检索）与 `llm_client.chat_stream()`（RAG 问答）均实测走通 DeepSeek。
+
+**证据 5 — 端点连通性探测（`05-temp/t_3cdebd1f_endpoint_probe.py`）**
+```
+TCP: 34.121.9.233:4000 → timeout(FAIL)   34.64.61.208:4000 → timeout(FAIL)
+     api.deepseek.com:443 → OPEN 0.01s   127.0.0.1:8100 → OPEN
+HTTP: 旧 LLM 000（不可达）  旧 Embedding 000（不可达）
+     DeepSeek 401（无鉴权请求，网络+协议通）  本地 kb-embed 200
+```
+
+### 4. 已知问题 / 约束
+
+1. **PDF 解析链路仍不可用（与本次改动无关）**：`kb-mineru` 容器/镜像在本机不存在（`docker ps -a` 无该容器），pdf/docx/xlsx/图片解析报 `MinerU 解析异常: [Errno 111] Connection refused`，存量 PDF 文档状态均为 `failed`。因此任务书里“上传小 PDF 选 pageindex”**无法按原样执行**，本次以 `.md`（本地解析，同一 pageindex 建树/检索链路）完成建树实测；恢复 PDF 需按 `infra/docker-compose.yml` 的 `mineru` profile 构建镜像（首次还需下载 ~2GB 模型），属独立事项。
+2. **`deepseek-flash` 是推理型模型**：`reasoning_content` 与 `content` 同源计入 `max_tokens`。实测 `max_tokens=32` 时全部预算被推理吃掉 → `finish_reason=length`、`content` 为空（`ai_client.chat` 返回 `''`）。当前配置：建树 `max_tokens=8192`（实测通过）、检索推理 `max_tokens=1024`（本次 483 字文档实测通过，score 0.98）、RAG 流式 `2048`（实测通过）。**风险点**：`pageindex_retrieve` 的 1024 对长 outline/复杂问题可能被推理吃满而返回空选区，建议后续提到 2048（本轮未改，避免超出任务范围）。
+3. **`.env.example` 曾在 git 中泄露真实 vllm key**：本轮已把它替换为占位，但 **git 历史里仍存在该 key**（该 key 属已下线的 34.121.9.233 端点，实际风险低）。是否需要轮换/清理历史由褚岩决策，本轮不动历史。
+4. **`config.py` 的 `embedding_base_url` 默认值仍指向已下线的 `34.64.61.208:4000`**（红线：本次不改 embedding）。实际生效值由 `.env` 的 `EMBEDDING_BASE_URL=http://127.0.0.1:8100/v1`（本地 kb-embed 容器）覆盖，health 实测 embedding=ok。新环境若无 `.env` 覆盖会打到死端点。
+5. **部署脚本修复**（见 §1）：`scripts/start_backend.sh` 的 redis 预检参数此前硬编码且与 `.env` 漂移，导致 `DEPLOY.md §5` 的手动恢复路径失效；已改为读 settings。同类硬编码在 `scripts/start_worker.sh` 中不存在（worker 走 `celery_app` 配置）。
+6. **文档/设计稿未同步**：`00-management-PAGEINDEX_BRIEF.md`、`00-management-PAGEINDEX_DESIGN.md`、`docs/prd.md`、`docs/architecture.md`、`03-testing/TEST_PLAN.md` 中仍写旧端点 `34.121.9.233:4000` / 旧模型 `vllm-qwen3.8-27b`。它们是历史设计记录，本轮未改（避免混淆历史），需要时单独更新。
+7. **未重启 MCP 9100**：其不依赖 LLM（检索走 ES/pageindex 引擎的自身进程），本轮重启项仅为 9012 + Celery。
+
+### 5. 一句话总结
+
+kb-management 的 LLM 已从已下线的 vllm 切到 DeepSeek（`api.deepseek.com/v1` + `deepseek-flash`，密钥只进 `infra/.env`），9012 与 Celery 已重启生效，四项自测（settings 生效 / health llm=ok / PageIndex 真实建树 status=ok·model=deepseek-flash / RAG 流式问答两条路径 + 仓库 e2e 8/8）全部真实通过；embedding 与 PDF(MinerU) 两项环境限制如实记录未修。
+
