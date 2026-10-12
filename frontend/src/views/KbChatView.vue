@@ -52,6 +52,12 @@
           </div>
         </div>
 
+        <!-- auto（智能）0 命中 / 降级提示条：灰色，非红色错误弹窗（F6/F7） -->
+        <div v-if="notice" class="notice-bar">
+          <span class="notice-text">{{ notice }}</span>
+          <el-icon class="notice-close" @click="notice = ''"><Close /></el-icon>
+        </div>
+
         <!-- Input -->
         <div class="chat-input">
           <el-input
@@ -62,7 +68,9 @@
             @keydown.enter.exact.prevent="sendQuestion"
           />
           <div class="input-right">
+            <span class="mode-hint">智能模式：按本知识库的索引构成自动选择检索方式</span>
             <el-radio-group v-model="retrievalMode" size="small" class="mode-group">
+              <el-radio-button value="auto">智能（推荐）</el-radio-button>
               <el-radio-button value="hybrid">混合</el-radio-button>
               <el-radio-button value="vector">向量</el-radio-button>
               <el-radio-button value="keyword">关键词</el-radio-button>
@@ -100,7 +108,8 @@ const currentConvId = ref<string | null>(null)
 const question = ref('')
 const streaming = ref(false)
 const streamText = ref('')
-const retrievalMode = ref<'hybrid' | 'vector' | 'keyword' | 'pageindex'>('hybrid')
+const retrievalMode = ref<'auto' | 'hybrid' | 'vector' | 'keyword' | 'pageindex'>('auto')
+const notice = ref('')
 const messagesRef = ref<HTMLElement | null>(null)
 
 const renderMarkdown = (text: string): string => {
@@ -155,6 +164,7 @@ const sendQuestion = () => {
   question.value = ''
   streaming.value = true
   streamText.value = ''
+  notice.value = ''
   scrollToBottom()
 
   let fullText = ''
@@ -173,6 +183,8 @@ const sendQuestion = () => {
       streaming.value = false
       sources = data.sources || sources
       if (data.conversation_id) currentConvId.value = data.conversation_id
+      // auto（智能）：0 命中 / pageindex 腿降级 → meta.notice 灰色提示条
+      if (data.notice) notice.value = data.notice
       messages.value.push({
         role: 'assistant',
         content: fullText || (data.full || data.answer || ''),
@@ -309,6 +321,23 @@ onMounted(fetchConversations)
   gap: 10px;
   align-items: flex-end;
 }
+/* auto（智能）提示条：灰色提示，非红色错误弹窗 */
+.notice-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 20px 8px;
+  padding: 8px 12px;
+  background: #f4f4f5;
+  border: 1px solid #e9e9eb;
+  border-radius: 4px;
+  color: #909399;
+  font-size: 13px;
+}
+.notice-text { flex: 1; line-height: 1.5; }
+.notice-close { cursor: pointer; color: #c0c4cc; }
+.notice-close:hover { color: #909399; }
+.mode-hint { font-size: 12px; color: #909399; }
 .input-right {
   display: flex;
   flex-direction: column;

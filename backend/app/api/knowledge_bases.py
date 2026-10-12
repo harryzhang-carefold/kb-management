@@ -108,6 +108,23 @@ def get_kb(kb_id: UUID, db: Session = Depends(get_db),
     return ok(_kb_detail_out(kb, db))
 
 
+@router.get("/{kb_id}/index-stats")
+def kb_index_stats(kb_id: UUID, db: Session = Depends(get_db),
+                   user: User = Depends(get_current_user)):
+    """KB 索引构成统计（只读，鉴权同 KB 详情）。供前端/运维核对 auto 路由依据。"""
+    from app.services.kb_index import kb_index_composition
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb:
+        raise not_found("知识库不存在")
+    require_kb_access(user, kb)
+    comp = kb_index_composition(db, kb_id)
+    return ok({
+        "embedding_docs": comp["embedding_docs"],
+        "pageindex_docs": comp["pageindex_docs"],
+        "total_indexed": comp["embedding_docs"] + comp["pageindex_docs"],
+    })
+
+
 @router.put("/{kb_id}")
 def update_kb(kb_id: UUID, req: schemas.KbUpdateReq,
               db: Session = Depends(get_db),

@@ -43,12 +43,12 @@ export const reindexDoc = (kbId: string, docId: string) =>
 export const rebuildPageindex = (kbId: string, docId: string) =>
   api.post(`/knowledge-bases/${kbId}/documents/${docId}/pageindex/rebuild`)
 
-// Search（mode: hybrid / vector / keyword / pageindex）
-export const search = (kbId: string, query: string, topK = 10, mode = 'hybrid') =>
+// Search（mode: auto（智能，默认）/ hybrid / vector / keyword / pageindex）
+export const search = (kbId: string, query: string, topK = 10, mode = 'auto') =>
   api.post(`/knowledge-bases/${kbId}/search`, { query, top_k: topK, mode })
 
 // Chat
-// retrievalMode: hybrid / vector / keyword / pageindex
+// retrievalMode: auto（智能，默认）/ hybrid / vector / keyword / pageindex
 export const chatStream = (
   kbId: string,
   question: string,
@@ -56,7 +56,7 @@ export const chatStream = (
   onToken: (text: string) => void,
   onDone: (data: any) => void,
   onError: (err: string) => void,
-  retrievalMode = 'hybrid'
+  retrievalMode = 'auto'
 ) => {
   const store = (window as any).__userStore
   const token = store?.token || localStorage.getItem('kb_token') || ''
@@ -78,9 +78,10 @@ export const chatStream = (
     let fullText = ''
     let sources: any[] = []
     let conversationIdOut: string | null = null
+    let notice: string | null = null
     const read = () => {
       reader.read().then(({ done, value }) => {
-        if (done) { onDone({ full: fullText, sources, conversation_id: conversationIdOut }); return }
+        if (done) { onDone({ full: fullText, sources, conversation_id: conversationIdOut, notice }); return }
         buffer += decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
@@ -104,8 +105,10 @@ export const chatStream = (
               sources = data.sources || []
             } else if (type === 'meta') {
               if (data.conversation_id) conversationIdOut = data.conversation_id
+              // auto（智能）模式的 0 命中/降级提示（meta.notice，非 error 事件）
+              if (data.notice) notice = data.notice
             } else if (type === 'done') {
-              onDone({ full: fullText, sources, conversation_id: conversationIdOut, ...data })
+              onDone({ full: fullText, sources, conversation_id: conversationIdOut, notice, ...data })
               return
             } else if (type === 'error') {
               onError(data.message || '未知错误')

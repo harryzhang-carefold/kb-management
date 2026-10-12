@@ -20,13 +20,18 @@
           </template>
         </el-input>
         <el-radio-group v-model="mode" size="default" class="mode-group">
+          <el-radio-button value="auto">智能（推荐）</el-radio-button>
           <el-radio-button value="hybrid">混合</el-radio-button>
           <el-radio-button value="vector">向量</el-radio-button>
           <el-radio-button value="keyword">关键词</el-radio-button>
           <el-radio-button value="pageindex">PageIndex</el-radio-button>
         </el-radio-group>
+        <span class="mode-hint">智能模式：按本知识库的索引构成自动选择检索方式</span>
       </div>
     </el-card>
+
+    <!-- auto（智能）0 命中 / 降级提示条：灰色，非红色错误弹窗（F6/F7） -->
+    <div v-if="hint" class="notice-bar">{{ hint }}</div>
 
     <!-- Results -->
     <div v-if="results.length > 0" class="results">
@@ -50,12 +55,7 @@
       </el-card>
     </div>
 
-    <el-empty v-if="searched && results.length === 0">
-      <template #description>
-        <span v-if="hint">{{ hint }}</span>
-        <span v-else>未找到相关结果</span>
-      </template>
-    </el-empty>
+    <el-empty v-if="searched && results.length === 0" description="未找到相关结果" />
     <el-empty v-if="!searched" description="输入关键词开始搜索" />
   </div>
 </template>
@@ -70,7 +70,7 @@ const route = useRoute()
 const kbId = route.params.id as string
 const kbName = ref('')
 const query = ref('')
-const mode = ref<'hybrid' | 'vector' | 'keyword' | 'pageindex'>('hybrid')
+const mode = ref<'auto' | 'hybrid' | 'vector' | 'keyword' | 'pageindex'>('auto')
 const results = ref<any[]>([])
 const hint = ref('')
 const searching = ref(false)
@@ -139,6 +139,18 @@ onMounted(async () => {
 }
 .search-toolbar .el-input { flex: 1; }
 .mode-group { flex-shrink: 0; white-space: nowrap; }
+.mode-hint { font-size: 12px; color: #909399; flex-shrink: 0; }
+/* auto（智能）提示条：灰色提示，非红色错误弹窗 */
+.notice-bar {
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: #f4f4f5;
+  border: 1px solid #e9e9eb;
+  border-radius: 4px;
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.5;
+}
 .result-meta {
   font-size: 14px;
   color: #909399;

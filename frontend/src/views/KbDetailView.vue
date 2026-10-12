@@ -25,6 +25,7 @@
         </el-radio-group>
         <span class="upload-options-desc" v-if="indexType === 'pageindex'">
           无向量、基于层级树 + LLM 推理检索；上传后异步建树（约 30-120s），一个文档只建一种索引。
+          问答与检索时选择「智能」或「PageIndex」模式即可命中本类文档。
         </span>
         <span class="upload-options-desc" v-else>
           现有行为：解析 → 分块 → 向量索引（Embedding + ES 混合/向量/关键词检索）。

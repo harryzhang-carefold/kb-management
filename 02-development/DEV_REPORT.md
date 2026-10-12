@@ -776,3 +776,167 @@ host 进程 RSS: 9012 ≈150MB / 9100 ≈130MB / celery 112+145+128MB
 并顺带修掉「pageindex 成默认后才暴露」的两个真实缺陷——推理型模型输出预算把建树压成降级树（8192→32768，另加解析失败重试）、
 检索选节点被截断返回空结果（1024→8192）；重构后的 dist 已换装到 nginx 挂载目录并公网生效（默认选中 pageindex、
 不碰 radio 直接上传确实走树索引并建树 ok），7/7 自测 + 3/3 建树稳定性 + UI 端到端 + 仓库 e2e 8/8 全部真实通过。
+
+---
+
+## BUG-06（P1，部署缺口）修复：MCP :9100 常驻化并加载 BUG-01 修复（t_29066864，2026-10-12）
+
+> 完整报告见 **`02-development/BUGFIX_BUG06_MCP_DEPLOY.md`**。本节为汇总。
+
+### 1. 问题与根因
+
+VERIFY-6（`t_87e536bf`）独立裁定：BUG-01 的**代码修复 PASS**，但 MCP `search_knowledge`（:9100）
+**仍跨库泄露**——:9100 是**裸进程**（PID 2382073，启动 00:43:24 UTC），早于 `es_client.py` 修复文件
+mtime（03:11:00 UTC）2h28m，模块未重载 → MCP 侧跑的还是修复前 `hybrid_search`。属**部署缺口**，非代码缺陷。
+
+### 2. 改动（1 个新增单元文件 + 文档；未改任何代码语义）
+
+| 项 | 内容 |
+|---|---|
+| 新增 | `~/.config/systemd/user/kb-mcp-9100.service`（持久单元文件，`enabled`；`Restart=always`/`RestartSec=5`；`ExecStart=/bin/bash scripts/start_mcp.sh`；日志 append `05-temp/mcp_9100.log`） |
+| 切换 | `kill -TERM 2382073 2381809` → `daemon-reload` → `enable` → `start`（就绪后 PID 3089178，03:27:02） |
+| 文档 | `02-development/DEPLOY.md`：§1 服务总览、§2.1 启动方式（单元优先/nohup 兜底）、**§5.0 新增「改代码后重启口径」**、§5 恢复手册与单元文件原文、§6 自测复现 |
+| 未动 | `es_client.py`（红线）、`scripts/start_mcp.sh`、nginx、Celery、前端、服务器台账以外资源、测试侧夹具 |
+
+### 3. 部署验证（全部真实执行，2026-10-12 UTC）
+
+```
+[同夹具对照 kb_id=30f60da2… kb-docs=1 mode=hybrid top_k=10]
+  修复前 03:26 PID 2382073(00:43:24 启动) items=10 foreign_docs=1  → BUG_REPRODUCED exit=2
+  修复后 03:27 PID 3089178(03:27:02 启动) items=9  foreign_docs=0  → PASS exit=0
+  （修复后 9 条 score 与修复前本 KB 9 条逐位一致，第 10 条他库项消失）
+[MCP 三模式]  hybrid PASS / vector PASS / keyword PASS（items=9 foreign_docs=0）
+[回归]        case_BUG-01 vector/hybrid/keyword 三模式 foreign_docs=0 PASS；
+              case_NGX-01/02/03/04/05/06/07/10 全 PASS（NGX-06 items=9，修复前 10）
+[常驻性]      kill -9 主进程 → 10s 内 systemd 自动拉起（NRestarts=1，PID 3093498，03:28:30），:9100 重新 LISTEN
+[可达性]      a4_mcp_smoke.py 无 key 401 / 错 key 401 / 正确 key 200；
+              agent 容器 172.19.0.1:9100 TCP OPEN + HTTP 200 initialize（跨容器链路未退化）
+[进程级证据]  :9100 进程启动时刻晚于 es_client.py mtime（03:11:00）→ 确已加载修复后代码
+```
+
+### 4. 资源占用（已回写台账）
+
+`kb-mcp-9100.service`：MainPID 3093498，内存 ≈92MB（`systemctl show MemoryCurrent` 96,370,688 B），
+端口占用不变（0.0.0.0:9100），无新增容器、无新增端口；单元文件 1 个（1.0KB，`~/.config/systemd/user/`）。
+
+### 5. 已知问题 / 风险（详见报告 §6）
+
+1. **验证 KB 被我方回归写脏**：重放 `case_NGX-01/03/05`（卡片要求）向 `kb.json` 的 KB 上传 3 个文档 →
+   该 KB 由 1 文档/9 chunk 变 4 文档/18 chunk，使 `case_BUG-06.sh` 判别力下降；因红线与并发测试卡
+   （`t_32351222` running）**未清理，只报告**；决定性对照是「修复前后同为 1 文档」那组数据。
+2. **`pdf_3mb.pdf` / `pdf_1_1mb.pdf` 上传后 `status=failed`（0 chunk）**：本次重放观察到，疑与
+   parse 引擎（`/api/v1/parse-engine` 报 `mineru=unreachable`）有关；非本卡引入，另行待查。
+3. **9012 单元仍是 transient**（`systemd-run` 起，reboot 后不自动恢复）：已在 `DEPLOY.md` §5 注②登记为
+   后续建议；本次未改（红线：不动已验证 PASS 的 9012 链路）。**Celery 仍是 nohup 裸进程**（沿用既有登记）。
+4. **并发写码**：本卡执行期间另一张本人卡 `t_efead8b4`（检索/问答 auto 模式，running）于 03:28:17 重启过
+   9012；若其再改 `es_client.py`/检索链路，**必须按 `DEPLOY.md` §5.0 同时重启 9100**，否则会重演 BUG-06。
+   → 已在卡片上标注该并发事实。
+
+### 6. 一句话总结
+
+MCP :9100 已从裸进程常驻化为 systemd user 单元（`Restart=always`，实测 kill -9 自愈）并重启加载 BUG-01 修复：
+同一夹具下 MCP `search_knowledge` 由 `items=10 / foreign_docs=1` 变为 `items=9 / foreign_docs=0`，
+`case_BUG-06.sh` 转 **PASS**，BUG-01 三模式与 NGX-01/02/03/04/05/06/07/10 回归全 PASS，跨容器可达性与鉴权未退化，
+`DEPLOY.md` 已补「改 `es_client.py` 必须重启 9012 与 9100 两处」口径；待测试侧重放复核后关闭。
+
+
+---
+
+## 检索/问答默认模式 `auto`（智能）：按 KB 索引构成自动路由 + 混合库联邦检索（t_efead8b4，分支 `feat/default-pageindex`，2026-10-12）
+
+**规格**：`01-product/PRODUCT_DECISIONS.md` §PD-001 + `01-product/PRD-AUTO-RETRIEVAL.md`（F1–F8 / AC1–AC11 / 红线）。
+**触发**：t_7f451c5f 暴露的默认值错配 —— 上传默认 `pageindex`（不写 ES 分块）+ 问答默认 `hybrid` → 默认链路 0 来源。
+
+### 1. 改动清单（13 文件，未动任何显式 mode 分支 / es_client / pageindex_engine / mcp_server）
+
+| 文件 | 改动 |
+|---|---|
+| `backend/app/services/kb_index.py` **（新增）** | `kb_index_composition(db, kb_id)`：单条 SQL 聚合出 `{embedding_docs, pageindex_docs}`（口径同 PRD §F2，不缓存跨请求） |
+| `backend/app/services/auto_retrieval.py` **（新增）** | `auto` 路由执行体：`run_auto()`（es/pageindex/both/none）、F4 合并、F5 单腿降级、F6 五条文案常量 |
+| `backend/app/schemas/schemas.py` | `SearchReq.mode` / `ChatReq.retrieval_mode`：pattern 加 `auto`，默认值 `hybrid` → `auto`（OpenAPI 已核） |
+| `backend/app/api/search.py` | 新增 `mode == "auto"` 分支（在原 pageindex 分支**之前**，红线分支 42–46 行原样保留）；`message` / `degraded` 承载 |
+| `backend/app/services/rag_engine.py` | `stream_answer()` 新增 `auto` 分支 + `db` 参数；`meta` 事件新增可选 `notice`；显式 pageindex / hybrid 分支逻辑一字未改 |
+| `backend/app/api/chat.py` | 把 `db` 传给 `stream_answer`；`meta` 事件 payload 透传 `notice` |
+| `backend/app/api/knowledge_bases.py` | 新增 `GET /{kb_id}/index-stats`（鉴权同 KB 详情，404 沿用 `not_found`） |
+| `frontend/src/api/index.ts` | `search(... mode='auto')`、`chatStream(... retrievalMode='auto')`；SSE `meta.notice` 透传到 `onDone` |
+| `frontend/src/views/KbChatView.vue` | 模式组首位「智能（推荐）」+ 默认 `'auto'` + 小字提示 + 灰色 `notice` 提示条 |
+| `frontend/src/views/KbSearchView.vue` | 同上（渲染 `message` 为灰色提示条） |
+| `frontend/src/views/KbDetailView.vue` | PageIndex 说明追加一句「问答与检索时选择「智能」或「PageIndex」模式即可命中本类文档。」 |
+| `docs/api.md` | `auto` 取值/默认值、路由与合并规则（含"归一化分只用于排序、不是阈值"）、5 条文案、`index-stats`、SSE `meta.notice`；顺带修正上传 `index_type` 默认值描述（`embedding`→`pageindex`，上一卡遗漏） |
+| `05-temp/t_efead8b4_*.py/.sh` | 5 个自测/验证脚本 + 输出（见 §4） |
+
+**未改**：`es_client.hybrid_search` 内部、`pageindex_engine` 内部、`mcp_server.py`（MCP 默认 `hybrid`，枚举不含 `auto`）、上传默认 `index_type=pageindex`（`documents.py:73`）、`tests/e2e_test.py`（断言语义未动）、nginx 配置、任何容器本体。
+
+### 2. 关键实现决策（含对规格的 3 处显式裁定）
+
+1. **单腿不归一化**：F4 的分数归一化只发生在"混合库两路合并"时；单腿 `auto` 直接透传该腿原始分数与顺序 → 与对应显式模式**逐条一致**（AC3 要求"items 与 mode=hybrid 完全相同"）。已写入 api.md 与代码注释。
+2. **去重键加 `node_id`**：F4 规定去重键 `(document_id, chunk_index)`，但 pageindex 命中的 `chunk_index` 是"文档内首个 chunk 的锚点"（整篇同值），严格按二键去重会把**同一文档的多个树节点合并成 1 条**（问答上下文被削）。实现为 `(document_id, chunk_index, metadata.node_id or "")`：ES 命中无 `node_id` → 退化为规格中的二键，语义等价且不误合并。`_dedup_key()` 注释 + api.md 记录。
+3. **chat 的 ES 腿取数沿用 `settings.rag_top_k`**、最终截断到 `top_n`（与既有 `hybrid` 问答路径完全一致），而非把 `top_n` 直接当 ES 取数条数 → 纯 embedding 库的 `auto` 问答与改动前 `hybrid` 逐条同源。
+4. 混合库两腿**串行执行**（先 ES 后 pageindex），`took_ms` 为实际墙钟；`degraded` 仅回 `["pageindex"]`（规格未定义 es 腿降级标记，ES 腿异常沿用现状：embedding 不可用 → es_client 内退化关键词）。
+
+### 3. 部署（本次无新增容器/端口，台账已回写）
+
+| 项 | 操作 | 实测 |
+|---|---|---|
+| kb 后端 9012 | `systemctl --user restart kb-backend-9012`（systemd user 单元，uvicorn 无 `--reload`） | `health=200`，`llm=ok / embedding=ok / es=green`；PID 3093130，`MemoryCurrent=122,064,896 B ≈116MB` |
+| kb MCP 9100 | `systemctl --user restart kb-mcp-9100`（DEPLOY §5.0：检索链路改动建议一并重启） | 端口 0.0.0.0:9100 不变；PID 3107592，`MemoryCurrent=95,412,224 B ≈91MB` |
+| 前端 | `vite build` → 换装 `02-development/deploy/dist`（旧 assets 留档 `assets.prev_033028`）→ `docker exec nginx-test nginx -s reload` | 公网 `https://agent.carefold.ai/kb-management/` 200；懒加载 chunk `KbChatView-Dh7oHtit.js` / `KbSearchView-BrUHZm5U.js` 各含「智能（推荐）」与提示小字；**12 个 js 本地 dist 与线上 md5 逐个一致** |
+| 容器/端口 | 无新增、无删除 | kb-pg 59.61MiB / kb-es 1.22GiB / kb-minio 134.4MiB / kb-dev-redis 8.75MiB / kb-embed 1.192GiB(上限 4G) / nginx-test 13.09MiB（`docker stats --no-stream`） |
+
+台账：`~/hermes-workspace/shared/infrastructure/SERVER_REGISTRY.md` 已追加本次变更条目（无新增端口/容器，仅重启与前端换装）。
+
+### 4. 自测证据（全部真实调用 9012 / 9100 / 数据库；脚本在 `05-temp/`）
+
+| 脚本 | 覆盖 | 结果 |
+|---|---|---|
+| `t_efead8b4_selftest.py`（HTTP 端到端，输出 `t_efead8b4_all_out.txt`） | F1 + Fixture(4 KB) + AC1/AC2/AC3/AC4/AC5/AC6/AC7/AC8 | **35/35 PASS** |
+| `t_efead8b4_chat_notice_unit.py` | chat 侧 5 条文案的 `meta.notice` 承载通道（桩 `run_auto` + 桩 LLM，不产生真实调用） | **17/17 PASS** |
+| `t_efead8b4_unit_matrix.py`（进程内真实 DB/ES/embedding/LLM） | A 构成分类 / B 纯 embedding / C 纯 pageindex / D 混合库 / E 空构成 / F 降级 / G 合并规则 / H 文案逐字 / I 延迟与 LLM 增量 | **32/32 PASS** |
+| `t_efead8b4_ac9_mcp.py` | MCP 9100 不变性（工具清单 + 不传 mode 调用 + 鉴权） | **6/6 PASS** |
+| `tests/e2e_test.py` | 仓库既有 e2e（第 4 步显式 `index_type=embedding`，未改动） | **8/8 PASS** |
+
+**AC 自测矩阵（逐条）**
+
+| AC | 结论 | 证据（实测值） |
+|---|---|---|
+| AC1 默认上传+默认提问 | PASS | 新建 KB（不传 `index_type`，15s 建树 `pageindex_status=ok`）→ 默认 chat（不传 `retrieval_mode`）`sources=3`，答案含口令 `星火-7315`，无 error，`leg=pageindex`×3 |
+| AC2 显式模式回归 | PASS | `retrieval_mode=pageindex` 有来源、无 error、**无 notice**（notice 只属 auto）；hybrid 路径由 `tests/e2e_test.py` 第 6/7 步回归通过 |
+| AC3 纯 embedding 零变化 | PASS | `auto` 与 `mode=hybrid` 的 `(document_id, chunk_index, score)` 三元组逐条相同（`[('4c4f9041…', 0, 0.032787)]`），`leg=es`，无 `degraded`；进程内计数证明 **pageindex 腿 0 次调用** |
+| AC4 混合库不漏检 | PASS | 夹具混合库 `{embedding_docs:1, pageindex_docs:1}`：`auto` items=4，`leg=pageindex`×3 + `leg=es`×1，两腿各≥1 条，降序 |
+| AC5 红线回归 | PASS | 纯 embedding 库显式 `mode=pageindex` → `total=0`、`items=[]`，仍带既有 `message`（未回退 ES） |
+| AC6 文案逐字 | PASS | 5 条逐字比对：空库/仅 embedding 0 命中（`filters.file_type=pdf` 置空两腿）/仅 pageindex 0 命中/混合两路 0 命中 走 HTTP；`pageindex 腿异常降级` 走进程内桩（真实触发需破坏 LLM） |
+| AC7 空库 | PASS | search `message` 逐字；chat `meta.notice` 逐字且事件序列 `meta→token→done`，**无 error 事件** |
+| AC8 接口契约 | PASS | 4 个 KB 的 `index-stats` 与 DB 聚合逐字段一致；KB 不存在 404；OpenAPI 两字段 `default='auto'`（pattern 含 auto） |
+| AC9 MCP 不受影响 | PASS | 工具清单 `mode.default='hybrid'`、描述/枚举不含 `auto`；不传 mode 调用 `items=1` 且命中属本 KB；无 key → 401；`mcp_server.py` 未在本次 diff 中 |
+| AC10/AC11 前端与线上 | **部分**（部署与产物已验证，浏览器级 DOM 断言留给测试侧） | dist 已重建换装、公网 200、本地/线上 12 个 js md5 一致、懒加载 chunk 含「智能（推荐）」；默认选中 `auto` 的**浏览器 DOM/网络断言**与"默认链路提问有来源"的公网端到端由云天明按 `05-temp/t_7f451c5f_ui_verify.py` 方式复核 |
+
+### 5. 延迟与 LLM/token 增量实测（同一台机、DeepSeek `deepseek-flash`）
+
+| 场景 | 实测 |
+|---|---|
+| 索引构成统计（新增 SQL） | 20 次 `kb_index_composition`：avg **1.33ms** / p95 **1.92ms** / max 2.27ms（P95 要求 <50ms） |
+| 纯 embedding 库 `auto` vs `hybrid`（search） | 43ms vs 11ms（HTTP `took_ms`）；进程内 77ms vs 11ms —— 差值以 SQL(≈1.3ms)+连接/调度抖动为主，**无 LLM 调用** |
+| 混合库单腿 | ES 腿 42–44ms（1 条）；pageindex 腿 **1877 / 3343ms**（LLM 波动，4 条） |
+| 混合库 `auto`（两路串行） | **2187 / 5486 / 7922ms**（同 query 三次观测）→ 额外代价 = 1 次 pageindex LLM 调用（延迟即 pageindex 腿本身） |
+| 纯 pageindex 库 `auto` | 5777ms（= 显式 pageindex 检索耗时） |
+| token 增量 | 每次混合库 `auto` 多 **1 次** LLM 调用；pageindex 腿输入 prompt 实测 **644 字符**（中文粗估 ≈402 tokens，未含其 JSON 输出）。⚠️ `pageindex_engine.retrieve` 未回传 usage，**token 数只能按 prompt 字符数估算**，非精确账单值 |
+
+### 6. 已知问题 / 未闭环项
+
+1. **Q1（PD-001 §8，待褚岩向用户确认）**：`/search.mode`、`/chat.retrieval_mode` 的**接口层默认值**已按本卡默认方案由 `hybrid` 改为 `auto`；若用户要求接口默认值不变，退路是"接口默认仍 `hybrid`，仅前端默认传 `auto`"（前端改动不变，后端只保留 `auto` 取值与路由）——本次已按默认方案实现，**该点待确认**。
+2. **AC6 的 chat 侧两条文案难以自然触发**：「仅 embedding 0 命中」「混合两路 0 命中」在 chat 上无法用 `filters` 置空（`ChatReq` 无 filters），且 ES kNN 无阈值（几乎总能返回近邻）→ 这两条在 chat 上的**真实触发路径依赖 ES 侧无 chunk 的异常态**。本次用 search 侧真实 HTTP 触发 + chat 侧桩验证承载通道；云天明若要端到端复现，需构造"composition 说有 embedding 文档、ES 里无该 KB chunk"的状态（如清空 ES 后不重建）。
+3. **混合库 auto 的延迟由 pageindex 腿决定且波动大**（1.9s–7.9s 观测；同一 query 连续三次 max/min ≈3.6×），远超 `hybrid` 的 10–44ms。产品侧只要求"允许新增 1 次 LLM 调用"，但**用户可感知的等待变长**，建议后续评估：并行两腿、或 pageindex 腿单独超时/短超时降级（现状 `pageindex_retrieve_timeout` 60s）。
+4. **merged 分数不可当阈值**：ES RRF 分（≈1/60）与 LLM relevance 量纲不同，归一化后 `1.0` 只是"该腿最高分"，不代表绝对相关性。已在 api.md + 代码注释 + 本节写明，**禁止**据此做阈值过滤。
+5. **MCP 9100 仍不支持 pageindex**（既有缺口，本卡范围外）：MCP 工具枚举只有 hybrid/vector/keyword，`auto` 也未暴露给 MCP（会得到空结果）；已按 R9 保持"不改"，另开卡。
+6. **本次未提交 `git` 变更文件**：见 §7 —— 同工作树内有其它并行卡的未提交改动（`DEPLOY.md`、`BUGFIX_BUG06_MCP_DEPLOY.md`、`03-testing/*`），本次只提交本卡文件，避免把别人的在建内容卷进提交。
+7. **验证夹具**：新建 4 个 KB（`auto验收-纯PI/混合/纯EMB/空库-1791775813`，见 `05-temp/t_efead8b4_fixtures.json`）与若干 chat 会话/消息落库；**未清理**（红线：测试侧可能要用；空库 KB 需保留以复现 AC7）。如测试完成后要清，按 `fixtures.json` 里的 KB id 逐个删除即可。
+
+### 7. commit 与并发说明
+
+- 分支：`feat/default-pageindex`（沿用本卡产出所在的现有分支；未新开 `feat/retrieval-auto`，**原因**：`workspace_kind=dir` 的共享工作树里同时有其它卡的未提交改动，新开分支会把别人未完成的提交一起带过去）。
+- commit：`<见下方 kanban 完成说明 / git log>`。仅包含本卡 12 个代码/文档文件 + 本报告段；`05-temp/` 证据按项目惯例**不入 git**。
+- 并发：本卡执行期间另一张本人卡（MCP 常驻化）与测试卡的进程/文件同时存在；本卡重启 9012 与 9100 各一次，已按 DEPLOY §5.0 口径（检索链路改动 → 两处都重启），未触碰 nginx 配置与容器本体。
+
+### 8. 一句话总结
+
+新增 `auto`（智能，前端「智能（推荐）」）检索模式并作为 `/search.mode`、`/chat.retrieval_mode` 默认值：按 KB 实时索引构成主动路由（仅 embedding→ES 混合、仅 pageindex→树索引、两者都有→**两路都执行后合并**、都无→空+引导文案），显式 mode 与 `pageindex 0 命中不回退 ES` 红线零改动；混合库「默认上传 + 默认提问」由 0 来源变为带来源作答（AC1 sources=3 且答案含口令），纯 embedding 库与 `hybrid` 逐条一致且不产生任何 pageindex 调用，新增 SQL p95 1.92ms，混合库每次多 1 次 LLM 调用（prompt 644 字符）与 1.9–7.9s 墙钟；自测 35/35 + 17/17 + 32/32 + 6/6 + e2e 8/8 全绿，前端 dist 已重建换装（本地/线上 md5 一致），Q1（接口默认值是否获用户认可）待褚岩确认。

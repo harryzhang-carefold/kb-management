@@ -131,6 +131,16 @@
 ### GET `/knowledge-bases/{id}`
 知识库详情（含成员列表）。**Response 200**: `KnowledgeBaseDetail`。
 
+### GET `/knowledge-bases/{id}/index-stats`
+KB 索引构成统计（只读，鉴权同 KB 详情；`auto` 模式的路由依据）。KB 不存在 → 404。
+**Response 200**
+```json
+{ "code": 0, "data": { "embedding_docs": 3, "pageindex_docs": 2, "total_indexed": 5 } }
+```
+口径（单次 SQL 聚合，不缓存跨请求）：
+`embedding_docs` = `is_deleted=false AND status='indexed' AND COALESCE(meta->>'index_type','embedding')='embedding'`；
+`pageindex_docs` = `is_deleted=false AND meta->>'index_type'='pageindex' AND meta->>'pageindex_status' IN ('ok','degraded')`。
+
 ### PUT `/knowledge-bases/{id}`
 更新知识库（owner 或 admin）。
 **Request**: `{ name?, description?, chunk_size?, chunk_overlap?, status? }`
@@ -160,7 +170,7 @@
 
 ### POST `.../documents`
 上传文档（multipart/form-data）。
-**Form**: `file`（必填）、`index_type`（可选，`embedding`|`pageindex`，默认 `embedding`，v2 按文档二选一索引方式，互斥）
+**Form**: `file`（必填）、`index_type`（可选，`embedding`|`pageindex`，**默认 `pageindex`**，v2 按文档二选一索引方式，互斥）
 **支持格式**: `.pdf .docx .pptx .xlsx .txt .md .html .htm .jpg .jpeg .png .bmp .webp .tiff`
 （`.xls` 不支持，返回 40001 提示另存为 `.xlsx`）
 **大小上限（按类型）**: pdf 15MB（MinerU CPU 解析时长保护）/ docx·pptx·xlsx·图片 20MB / txt·md·html 10MB
@@ -199,17 +209,46 @@
 ## 5. 检索 `/knowledge-bases/{kb_id}/search`
 
 ### POST `.../search`
-混合检索。**Request**
+检索。**Request**
 ```json
 {
   "query": "如何配置 RAG 的 top_k 参数",
-  "mode": "hybrid",      // hybrid | vector | keyword | pageindex
+  "mode": "auto",         // auto（默认）| hybrid | vector | keyword | pageindex
   "top_k": 10,
   "filters": { "file_type": "md" }   // 可选
 }
 ```
 - `mode=pageindex`：跳过 embedding，走 PageIndex 树索引 LLM 推理检索（仅对 `index_type=pageindex` 且已建树的文档生效）；
-  KB 下无此类文档时返回 `items=[]` + `message` 提示（不静默回退 ES）。
+  KB 下无此类文档时返回 `items=[]` + `message` 提示（**不静默回退 ES**，红线）。
+- `mode=auto`（智能，默认，`01-product/PRODUCT_DECISIONS.md` §PD-001）：按本 KB **实时索引构成**
+  （`GET /index-stats` 同口径，单次 SQL 聚合）自动决定检索哪几路：
+
+  | 构成 | 行为 |
+  |---|---|
+  | 仅 embedding | 走 ES 混合检索（与 `mode=hybrid` 等价） |
+  | 仅 pageindex | 走 PageIndex 树索引（与显式 `mode=pageindex` 等价） |
+  | 两者都有 | **两路都执行**（ES 混合 + PageIndex）→ 合并 |
+  | 两者都为 0 | `items=[]` + `message`（下方文案表） |
+
+- `auto` 合并规则（仅**混合库**两路都返回时才归一化；单腿时 `score` 与对应显式模式完全一致、不归一化）：
+  1. 两路各取 `top_k`；
+  2. 各腿按**该腿自身最高分**归一化到 `(0,1]`（该腿最高分为 0 则全取 0）；
+  3. 按归一化分降序；**同分时 pageindex 腿优先**；
+  4. 去重键 `(document_id, chunk_index)`（保留高分；pageindex 命中额外带 `metadata.node_id` 以区分同文档不同节点）；
+  5. 截断到 `top_k`。
+  ⚠️ 两路量纲不同（ES RRF 分 ≈1/60 量级 vs PageIndex LLM relevance 0–1），**归一化分数只用于排序与展示，不是绝对相关性阈值**，不得据此做阈值过滤。
+- `auto` 输出：`items[].match_type` 保留原腿类型（`hybrid` / `pageindex`），`items[].metadata.leg ∈ {"es","pageindex"}`；
+  `took_ms` 为实际墙钟耗时（两腿串行执行）。
+- `auto` 无结果 / 降级文案（`message`；降级同时给 `degraded`）：
+
+  | 触发（auto） | message |
+  |---|---|
+  | 库内无可检索文档 | `本知识库暂无可检索的文档。请先上传文档并等待索引完成。` |
+  | 仅 embedding、0 命中 | `未在向量索引中检索到相关内容。可尝试换用「关键词」模式或换一种问法。` |
+  | 仅 pageindex、0 命中 | `未在 PageIndex 索引中检索到相关内容。请换一种问法（树索引对文档标题与小节更敏感）。` |
+  | 混合构成、两路 0 命中 | `未在知识库中检索到相关内容，请换一种问法或补充资料。` |
+  | pageindex 腿异常（降级，`degraded=["pageindex"]`） | `PageIndex 检索暂不可用，本次仅基于向量索引回答。` |
+
 **Response 200**
 ```json
 {
@@ -224,12 +263,13 @@
         "content": "...",
         "score": 0.87,
         "match_type": "hybrid",   // vector | keyword | hybrid | pageindex
-        "metadata": { "page": 5 }
+        "metadata": { "leg": "es" }   // auto 下必含：es | pageindex
       }
     ],
     "total": 25,
     "took_ms": 42,
-    "message": "（仅 mode=pageindex 且无 pageindex 索引文档时返回提示）"
+    "message": "（auto 无结果 / 显式 pageindex 无索引文档时的提示）",
+    "degraded": ["pageindex"]   // 可选；仅 auto 的 pageindex 腿异常时出现
   }
 }
 ```
@@ -251,17 +291,24 @@
   ],
   "top_n": 5,
   "system_prompt": "你是一个知识库助手",   // 可选
-  "retrieval_mode": "hybrid"              // 可选：hybrid | vector | keyword | pageindex（默认 hybrid）
+  "retrieval_mode": "auto"                 // 可选：auto（默认）| hybrid | vector | keyword | pageindex
 }
 ```
 - `retrieval_mode=pageindex`：走 PageIndex 树索引 LLM 推理检索（跳过 embedding/ES）；
   KB 下无 pageindex 索引文档时返回 `error` 事件提示（不静默回退、不空答）。
-  其他取值走现有 ES 混合检索路径，行为不变。
+- `retrieval_mode=auto`（智能，默认，§PD-001）：同 `/search` 的 `auto` 路由（仅 embedding → ES 混合；
+  仅 pageindex → 树索引；两者都有 → 两路都执行并合并，合并规则见 §5）。差异：
+  - ES 腿取数用 `settings.rag_top_k`、最终截断到 `top_n`（与既有 `hybrid` 问答路径一致）；
+  - 0 命中 / pageindex 腿降级时在 `meta` 事件 payload 中给**可选** `notice` 字段（文案与 §5 表逐字一致），
+    **不产生 `error` 事件**；
+  - `sources[].metadata.leg ∈ {"es","pageindex"}`，落库格式不变。
+- 其他取值（`hybrid|vector|keyword`）走现有 ES 混合检索路径，行为不变。
 
 **SSE 事件流**（每个 `data:` 是一行 JSON，`event` 标注类型）:
 ```
 event: meta
-data: {"conversation_id":"uuid","message_id":"uuid"}
+data: {"conversation_id":"uuid"}
+      // auto 0 命中/降级时：{"conversation_id":"uuid","notice":"<文案>"}
 
 event: token
 data: {"token":"建议"}

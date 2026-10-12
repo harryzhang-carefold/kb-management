@@ -201,7 +201,8 @@ class ChunkOut(BaseModel):
 # ============================================================
 class SearchReq(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
-    mode: str = Field("hybrid", pattern="^(hybrid|vector|keyword|pageindex)$")
+    # auto（智能，默认）：按 KB 索引构成自动路由；见 services/auto_retrieval.py
+    mode: str = Field("auto", pattern="^(auto|hybrid|vector|keyword|pageindex)$")
     top_k: int = Field(10, ge=1, le=100)
     filters: Optional[dict] = None
 
@@ -237,7 +238,8 @@ class ChatReq(BaseModel):
     history: list[ChatMessageReq] = Field(default_factory=list)
     top_n: int = Field(5, ge=1, le=20)
     system_prompt: Optional[str] = None
-    retrieval_mode: str = Field("hybrid", pattern="^(hybrid|vector|keyword|pageindex)$")
+    # auto（智能，默认）：按 KB 索引构成自动路由；见 services/auto_retrieval.py
+    retrieval_mode: str = Field("auto", pattern="^(auto|hybrid|vector|keyword|pageindex)$")
 
 
 class ConversationOut(BaseModel):

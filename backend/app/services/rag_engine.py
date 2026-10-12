@@ -48,15 +48,18 @@ class RAGEngine:
     def stream_answer(self, kb_id: str, question: str,
                       history: list[dict], top_n: int = 5,
                       system_prompt: Optional[str] = None,
-                      retrieval_mode: str = "hybrid") -> Iterator[dict]:
+                      retrieval_mode: str = "auto",
+                      db=None) -> Iterator[dict]:
         """
         RAG 流式问答。
-        retrieval_mode: hybrid / vector / keyword / pageindex
+        retrieval_mode: auto（默认，按本 KB 索引构成自动路由）/ hybrid / vector / keyword / pageindex
+        db: 可选 Session（auto 需实时统计 KB 索引构成；检索端点已有会话时传入，避免嵌套会话）
         yield:
-          {"type":"meta","sources":[...]}
+          {"type":"meta","sources":[...]}（auto 0 命中/降级时附 "notice"）
           {"type":"token","token":str}
           {"type":"done","full":str,"token_count":int}
         """
+        notice = None
         # 1. 检索分流
         if retrieval_mode == "pageindex":
             # pageindex：LLM 推理检索，跳过 embedding 与 ES
@@ -78,6 +81,21 @@ class RAGEngine:
                 yield {"type": "error",
                        "message": "未检索到相关 PageIndex 内容，请换一种问法或确认已上传 PageIndex 索引的文档。"}
                 return
+        elif retrieval_mode == "auto":
+            # auto（智能）：按本 KB 索引构成**主动**选路 —— 仅 embedding → ES 混合；
+            # 仅 pageindex → 树索引；两者都有 → 两路都查并合并（不属于静默回退）。
+            from app.services.auto_retrieval import run_auto
+            try:
+                res = run_auto(db, kb_id, question, top_n,
+                               es_top_k=settings.rag_top_k)
+            except Exception as e:
+                logger.error(f"auto retrieve failed: {e}")
+                yield {"type": "error", "message": f"检索服务不可用: {e}"}
+                return
+            sources = res["hits"]
+            took_ms = res["took_ms"]
+            # F6：0 命中 / pageindex 腿降级 → 走 meta.notice（不用 error 事件）
+            notice = res.get("message")
         else:
             # 2. question embedding（原有路径，行为不变）
             try:
@@ -112,7 +130,10 @@ class RAGEngine:
             "metadata": s.get("metadata", {}),
         } for s in sources]
 
-        yield {"type": "meta", "sources": source_meta, "took_ms": took_ms}
+        meta_event = {"type": "meta", "sources": source_meta, "took_ms": took_ms}
+        if notice:
+            meta_event["notice"] = notice
+        yield meta_event
 
         # 5. 构建 messages（含历史）
         messages = _build_prompt(system_prompt, question, sources)

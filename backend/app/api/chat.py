@@ -72,11 +72,16 @@ async def chat(kb_id: UUID, req: schemas.ChatReq,
             history=history, top_n=req.top_n,
             system_prompt=req.system_prompt,
             retrieval_mode=req.retrieval_mode,
+            db=db,
         ):
             etype = event.get("type")
             if etype == "meta":
                 sources = event.get("sources", [])
-                yield f"event: meta\ndata: {json.dumps({'conversation_id': str(conv.id)}, ensure_ascii=False)}\n\n"
+                meta_payload = {"conversation_id": str(conv.id)}
+                # F6：auto 的 0 命中/降级提示走 meta.notice（非 error 事件）
+                if event.get("notice"):
+                    meta_payload["notice"] = event["notice"]
+                yield f"event: meta\ndata: {json.dumps(meta_payload, ensure_ascii=False)}\n\n"
             elif etype == "token":
                 full_answer += event["token"]
                 yield f"event: token\ndata: {json.dumps({'token': event['token']}, ensure_ascii=False)}\n\n"
