@@ -141,11 +141,15 @@ class ESClient:
             base_filter.append({"term": {"file_type": filters["file_type"]}})
 
         # ---- 向量 kNN 检索 ----
+        # BUG-01（P1 跨库泄露）根因：ES 8 对顶层 `query` 与 `knn` 的命中**取并集**。
+        # 此前顶层是 {"match_all": {"boost": 0}} —— 没有任何 kb_id 过滤，于是全索引
+        # 其它知识库的 chunk（score=0）被并入结果，正好填满 size=top_k
+        # （多租户共用一个 kb_chunks 索引，隔离**完全**依赖这份 filter）。
+        # 修复：kNN 路径不再声明顶层 query，过滤只由 knn.filter=base_filter 承担。
         vector_hits = []
         if mode in ("hybrid", "vector") and query_vector:
             body = {
                 "size": top_k,
-                "query": {"match_all": {"boost": 0}},
                 "knn": {
                     "field": "embedding",
                     "query_vector": query_vector,
@@ -156,6 +160,14 @@ class ESClient:
             }
             resp = self.es.search(index=self.index, body=body)
             for h in resp["hits"]["hits"]:
+                # 防御性第二层（多租户隔离红线）：即使将来查询体再度回归，
+                # 也不把 kb_id 不匹配的 chunk 交给上层业务。
+                if h["_source"].get("kb_id") != kb_id:
+                    logger.warning(
+                        f"hybrid_search: dropped foreign chunk "
+                        f"document_id={h['_source'].get('document_id')} "
+                        f"kb_id={h['_source'].get('kb_id')} (query kb_id={kb_id})")
+                    continue
                 vector_hits.append({
                     "chunk_id": h["_id"],
                     "document_id": h["_source"]["document_id"],
@@ -182,6 +194,13 @@ class ESClient:
             }
             resp = self.es.search(index=self.index, body=body)
             for h in resp["hits"]["hits"]:
+                # 防御性第二层：同 kNN 分支，kb_id 不匹配的 chunk 一律不下发
+                if h["_source"].get("kb_id") != kb_id:
+                    logger.warning(
+                        f"hybrid_search(keyword): dropped foreign chunk "
+                        f"document_id={h['_source'].get('document_id')} "
+                        f"kb_id={h['_source'].get('kb_id')} (query kb_id={kb_id})")
+                    continue
                 keyword_hits.append({
                     "chunk_id": h["_id"],
                     "document_id": h["_source"]["document_id"],

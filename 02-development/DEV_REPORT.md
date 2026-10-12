@@ -537,3 +537,44 @@ HTTP: 旧 LLM 000（不可达）  旧 Embedding 000（不可达）
 
 kb-management 的 LLM 已从已下线的 vllm 切到 DeepSeek（`api.deepseek.com/v1` + `deepseek-flash`，密钥只进 `infra/.env`），9012 与 Celery 已重启生效，四项自测（settings 生效 / health llm=ok / PageIndex 真实建树 status=ok·model=deepseek-flash / RAG 流式问答两条路径 + 仓库 e2e 8/8）全部真实通过；embedding 与 PDF(MinerU) 两项环境限制如实记录未修。
 
+---
+
+## BUG-01（P1）修复：检索 `vector`/`hybrid` 模式跨知识库泄露（t_f4aac859，2026-10-12）
+
+> 完整报告（根因 / ES 层直证 / 风险点排查 / 证据）见 **`02-development/BUGFIX_BUG01_CROSS_KB_LEAK.md`**。本节为汇总。
+
+### 1. 根因与改动
+
+`backend/app/utils/es_client.py` 的 `hybrid_search()` kNN 分支顶层带了**没有 kb_id 过滤**的 `"query": {"match_all": {"boost": 0}}`；ES 8 对 `knn` 与顶层 `query` 的命中**取并集**，于是本 KB 的 kNN 真命中不足 `size=top_k` 时，全索引其它知识库的 chunk（`_score=0.0`）被并入结果填满条数 → 跨租户泄露（`kb_chunks` 为多租户共享单索引，隔离完全依赖 `kb_id` filter）。
+
+改动（唯一代码文件 `backend/app/utils/es_client.py`）：
+
+1. 删除 kNN 请求体的顶层 `query`，过滤只由 `knn.filter = base_filter` 承担（附根因注释防回归）；
+2. 两个检索分支各加一道结果层防御：命中 `_source.kb_id != 查询 kb_id` → 丢弃并告警（多租户隔离红线兜底）；
+3. 返回结构、`vector/hybrid/keyword` 三模式语义、RRF 融合逻辑不变。
+
+### 2. 验证（全部真实运行，2026-10-12 UTC）
+
+| 验证 | 结果 |
+|---|---|
+| `bash 03-testing/curl/case_BUG-01.sh`（mode=vector） | **`SUMMARY case=BUG-01 mode=vector foreign_docs=0 verdict=PASS`**（修复前 `foreign_docs=1 BUG_REPRODUCED`） |
+| `BUG_MODE=hybrid bash …/case_BUG-01.sh` | **`foreign_docs=0 verdict=PASS`**（修复前 `foreign_docs=1`） |
+| 双向隔离 × 三模式自测（`05-temp/t_f4aac859_verify.py`，KB A=被测库 / KB B=泄露片段归属库） | **16/16 PASS**；`vector`/`hybrid` 命中 `score_zero=0`（不再有 score=0 填充项） |
+| ES 层机制直证（`05-temp/t_f4aac859_es_evidence.py`） | OLD 请求体：10 条中 **3 条他库 chunk（score=0）**；NEW 请求体：7 条**全属本 KB**；`NEW ⊆ OLD` 且 **丢失真命中 0 条**（只少了 3 条跨库填充） |
+| 仓库回归 `tests/e2e_test.py` | **8/8 PASS** |
+| 防御层触发计数（重启后后端日志） | 0 次 → 泄露是在 ES 查询层被消除，非 Python 兜底掩蔽 |
+| 同类风险点排查 | 全仓 `es.search` 仅 2 处（本次均已过滤）；`count(kb_id=None)` 的 `match_all` **无调用点**（潜在项，登记观察） |
+
+### 3. 部署
+
+- 重启 kb 后端 9012 加载修复（2026-10-12 03:12:11 UTC），`health` 200（本地与 nginx-test 公网同值），RSS 149MB，无新增容器/端口；
+- 启动方式升级为 **systemd user 常驻单元 `kb-backend-9012.service`（`Restart=always`）**——此前 9012 寄生在 agent 会话 scope 内的 `nohup`，会话结束即被回收；`DEPLOY.md §5` 已同步；
+- **未改** nginx 配置（红线）、Celery、MCP 9100、前端 dist、embedding。
+
+### 4. 已知问题
+
+1. `es_client.count(kb_id=None)` 用 `match_all` 统计整索引：当前**无调用点**，未改（新增统计接口时必须要求 kb_id）。
+2. 同分支并行任务 t_7f451c5f 正在改 `documents.py`/`pageindex_engine.py`/前端；本次提交只含 `es_client.py` + 文档，未触碰其文件，**未 push**。
+3. Celery 仍寄生在别的 agent 会话 scope（PID 3043762/3043869/3043870），该会话结束会被回收；本次未动（避免双 worker 抢队列），建议后续统一为 `kb-celery.service` 常驻单元。
+4. `mode=vector` 不再返回 `score=0` 的全库填充项 → 真命中不足 `top_k` 时条数会少于 `top_k`（此前是被他库 chunk 填满的假满足）。
+

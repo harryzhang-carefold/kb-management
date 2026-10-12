@@ -90,7 +90,7 @@ curl -s https://agent.carefold.ai/kb-management/ | grep -oE 'assets/index-[^"]+\
 | `KB_PUBLIC_BASE_URL` | doc_url 绝对 URL 基址（公网前端路径） | `https://agent.carefold.ai/kb-management` |
 | `KB_VIEW_TOKEN_MINUTES` | view_token 有效期（分钟） | `15` |
 
-## 5. 重启恢复手册（无 systemd！）
+## 5. 重启恢复手册（9012 自 t_f4aac859 起为 systemd user 常驻；其余手动）
 
 宿主机重启 / 进程挂掉后，按序手动恢复：
 
@@ -98,9 +98,23 @@ curl -s https://agent.carefold.ai/kb-management/ | grep -oE 'assets/index-[^"]+\
 cd /home/harry.zhang/kb-management
 # 1. 基础设施容器（docker 容器若未 --restart，重启后需拉起；当前 kb-* 容器按需）
 docker ps   # 检查 kb-pg/kb-es/kb-minio/kb-dev-redis/kb-embed 是否 running
-# 2. 后端 API
-nohup bash scripts/start_backend.sh > 05-temp/backend_9012.log 2>&1 &
+# 2. 后端 API —— systemd user 单元 kb-backend-9012.service（Restart=always，2026-10-12 t_f4aac859 起）
+systemctl --user status kb-backend-9012 --no-pager        # 应 active (running)
+# 改代码后加载新代码：单元内是 uvicorn 无 --reload，必须重启单元
+systemctl --user restart kb-backend-9012
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:9012/api/v1/health   # 200
+#   日志：05-temp/backend_9012.log（单元 StandardOutput/Error append 到该文件）
+#         journalctl --user -u kb-backend-9012 -n 100
+#   若单元不存在（宿主重启后 systemd --user 未拉起）→ 先确认端口没被占：
+#     ss -ltnp | grep ':9012'
+#   然后二选一：重建单元
+#     systemd-run --user --unit=kb-backend-9012 --collect --property=Restart=always \
+#       --property=WorkingDirectory=/home/harry.zhang/kb-management \
+#       --property=StandardOutput=append:/home/harry.zhang/kb-management/05-temp/backend_9012.log \
+#       --property=StandardError=append:/home/harry.zhang/kb-management/05-temp/backend_9012.log \
+#       /home/harry.zhang/kb-management/scripts/start_backend.sh
+#   或退回旧方式（注意：寄生在当前 shell 的 systemd scope 内，会话结束会被回收）
+#     nohup bash scripts/start_backend.sh > 05-temp/backend_9012.log 2>&1 &
 # 3. MCP 9100
 nohup bash scripts/start_mcp.sh > 05-temp/mcp_9100.log 2>&1 &
 ss -tln | grep ':9100 '
@@ -109,7 +123,10 @@ bash scripts/start_worker.sh
 # 5. 前端：静态文件在 bind mount，重启后自动生效，无需操作（仅 nginx-test 容器需 running）
 ```
 
-进程快速检查：`ps aux | grep -E 'uvicorn.*9012|uvicorn.*9100' | grep -v grep`
+进程快速检查：`ps aux | grep -E 'uvicorn.*9012|uvicorn.*9100' | grep -v grep`；
+单元方式：`systemctl --user list-units 'kb-backend-*'`。
+
+> 注（未解决）：Celery 仍以 `nohup`/`bash scripts/start_worker.sh` 方式寄生在启动它的 shell 所属 systemd scope 内，会话结束会被回收（t_f4aac859 登记，未改）。建议后续照 9012 的做法做 `kb-celery.service` 常驻单元。
 
 ## 6. 自测复现（给云天明）
 
