@@ -109,6 +109,32 @@ $ backend/.venv/bin/python tests/e2e_test.py
 
 重启后 `05-temp/backend_9012.log` 中 `dropped foreign chunk` 告警计数 **0** —— 说明泄露是在 ES 查询层被消除的，Python 侧兜底没有"掩蔽"问题。
 
+### 3.5 自建 fixture 端到端 + 反证（`05-temp/t_f4aac859_verify_fixture.py`，2026-10-12 03:2x）
+
+**为什么还要做这一步**：上表用到的 fixture KB（`kb.json` 的 `d3862f54-…`）在 **03:15:20** 被并发测试侧清理
+（后端日志 `DELETE /api/v1/knowledge-bases/d3862f54-…` → 200；同一批共删 12 个 KB），此后
+`case_BUG-01.sh` 会因 `kb-docs=0` 给出**空跑 PASS**（假通过）。故本修复另起一份**自建、可复现、
+用后即删**的 fixture 再验一次，并做"修复前请求体"的反证：
+
+| 项 | 值 |
+|---|---|
+| fixture | KB A `926faf15-…`（9 chunk，被测）/ KB B `a2a5a6a1-…`（11 chunk，对照）；均 `index_type=embedding`，测试后已删除 |
+| 泄露条件 | A 的真命中 9 条 < `top_k=10`（正是会暴露缺陷的条件）✔ |
+| API（A，top_k=10） | `vector` 9 条 / `hybrid` 9 条 / `keyword` 9 条，**foreign=0、score_zero=0**（非空跑） |
+| ES 反证（同一份数据） | **修复前请求体**（顶层 `match_all` + `knn`）→ 返回 10 条，**1 条他库 chunk（score=0）**；**修复后请求体**（仅 `knn`+`filter`）→ 返回 9 条，**foreign=0** |
+| 清理 | 删除 A/B 后 ES 内两库 chunk 归零（`left=0`，无残留） |
+| 总计 | **15/15 检查 PASS**（输出：`05-temp/t_f4aac859_verify_fixture_out.json`） |
+
+> 这一步同时给出**反证**：同一份真实数据下，"修复前请求体"确实会带出他库 chunk（score=0），"修复后"为 0 —— 缺陷与修复的因果闭环。
+
+### 3.6 环境提示（交测试侧）
+
+- `case_BUG-01.sh` 的 oracle 依赖 `kb.json` 的 fixture KB **有数据**；该 KB 于 03:15 被并发清理后，
+  重放会得到 `kb-docs=0` 的**空跑 PASS**（`foreign_docs=0` 但无意义）。回归前请先按既有流程重建夹具
+  （`case_TC-003.sh` 建库 + 上传用例）或直接跑 `05-temp/t_f4aac859_verify_fixture.py`（自建 fixture，自清理）。
+- 建议（未改测试侧脚本）：`case_BUG-01.sh` 增加 `KB_DOCS_N > 0` 的断言，避免"KB 不存在"被误判为 PASS。
+- 该"验证 KB 被并发清理"已被测试侧登记为 BUG-02（P3 环境）。
+
 ---
 
 ## 4. 部署

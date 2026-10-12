@@ -563,6 +563,7 @@ kb-management 的 LLM 已从已下线的 vllm 切到 DeepSeek（`api.deepseek.co
 | ES 层机制直证（`05-temp/t_f4aac859_es_evidence.py`） | OLD 请求体：10 条中 **3 条他库 chunk（score=0）**；NEW 请求体：7 条**全属本 KB**；`NEW ⊆ OLD` 且 **丢失真命中 0 条**（只少了 3 条跨库填充） |
 | 仓库回归 `tests/e2e_test.py` | **8/8 PASS** |
 | 防御层触发计数（重启后后端日志） | 0 次 → 泄露是在 ES 查询层被消除，非 Python 兜底掩蔽 |
+| 自建 fixture 端到端 + 反证（`05-temp/t_f4aac859_verify_fixture.py`） | **15/15 PASS**：自建 A(9 chunk)/B(11 chunk) 两库，A 三模式 `foreign=0`；同一份数据下"修复前请求体"**必泄露**（10 条含 1 条他库 score=0）、"修复后"0 条；用后即删（ES 两库 chunk 归零） |
 | 同类风险点排查 | 全仓 `es.search` 仅 2 处（本次均已过滤）；`count(kb_id=None)` 的 `match_all` **无调用点**（潜在项，登记观察） |
 
 ### 3. 部署
