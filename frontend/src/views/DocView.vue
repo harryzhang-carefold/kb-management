@@ -10,7 +10,7 @@
         <div class="page-desc" v-if="doc?.file_type">
           <el-tag size="small" type="info">{{ doc.file_type }}</el-tag>
           <el-tag size="small" type="success" v-if="doc?.chunk_count">{{ doc.chunk_count }} 分块</el-tag>
-          <el-tag size="small" type="warning" v-if="piStatusLabel">{{ piStatusLabel }}</el-tag>
+          <el-tag size="small" :type="doc?.meta?.pageindex_status === 'failed' ? 'danger' : 'warning'" :class="{ 'pageindex-tag': doc?.meta?.pageindex_status === 'ok' }" v-if="piStatusLabel">{{ piStatusLabel }}</el-tag>
           <span v-if="doc?.file_size" class="file-size">{{ formatSize(doc.file_size) }}</span>
         </div>
       </div>
