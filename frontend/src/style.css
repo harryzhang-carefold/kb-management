@@ -27,3 +27,8 @@ body {
   margin-bottom: 20px;
   color: #303133;
 }
+.el-tag.pageindex-tag {
+  --el-tag-text-color: #7c3aed;
+  --el-tag-bg-color: #f5f3ff;
+  --el-tag-border-color: #ddd6fe;
+}

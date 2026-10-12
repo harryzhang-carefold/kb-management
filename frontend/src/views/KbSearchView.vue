@@ -40,7 +40,7 @@
       </div>
       <el-card v-for="(item, i) in results" :key="i" class="result-card" shadow="hover">
         <div class="result-header">
-          <el-tag size="small" :type="matchTypeTag(item.match_type)">
+          <el-tag size="small" :type="matchTypeTag(item.match_type)" :class="{ 'pageindex-tag': item.match_type === 'pageindex' }">
             {{ matchTypeLabel(item.match_type) }}
           </el-tag>
           <span class="result-score">相关度: {{ (item.score * 100).toFixed(1) }}%</span>
@@ -105,7 +105,7 @@ const matchTypeLabel = (t: string) => {
 }
 const matchTypeTag = (t: string) => {
   const map: Record<string, string> = {
-    vector: '', keyword: 'warning', hybrid: 'success', pageindex: 'danger'
+    vector: '', keyword: 'warning', hybrid: 'success', pageindex: 'info'
   }
   return (map[t] || 'info') as any
 }

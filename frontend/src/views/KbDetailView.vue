@@ -58,7 +58,7 @@
       <el-table-column prop="chunk_count" label="分块数" width="80" align="center" />
       <el-table-column label="索引方式" width="120" align="center">
         <template #default="{ row }">
-          <el-tag size="small" :type="(row.meta?.index_type || 'embedding') === 'pageindex' ? 'danger' : ''">
+          <el-tag size="small" :class="{ 'pageindex-tag': row.meta?.index_type === 'pageindex' }">
             {{ (row.meta?.index_type || 'embedding') === 'pageindex' ? 'PageIndex' : 'Embedding' }}
           </el-tag>
         </template>

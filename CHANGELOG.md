@@ -2,6 +2,8 @@
 
 ## 2026-10-12
 
+- Use purple PageIndex method tags in document lists and search results; keep failure status red. Adopt existing successful text indexes into evidence without changing their uploaded files or directory trees.
+
 - Fix queued/parsed/embedding status polling after upload and reparse, and restart polling after an index rebuild. Keep the last successful index until replacement publication; explicit rebuild requests bypass the indexing cache.
 
 - Merge the deployed auto-retrieval and citation fixes before extending `feat/pageindex`.

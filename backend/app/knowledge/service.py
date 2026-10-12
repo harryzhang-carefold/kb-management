@@ -189,4 +189,5 @@ class KnowledgeService:
 
     @staticmethod
     def metadata(doc):
-        return {k: doc[k] for k in ['id', 'version', 'source_id', 'title', 'page_count']} | {'document_id': doc['id']}
+        return {k: doc[k] for k in ['id', 'version', 'source_id', 'title', 'page_count']} | {
+            'document_id': doc['id'], 'page_kind': 'physical' if doc.get('source_type', 'pdf') == 'pdf' else 'logical'}
