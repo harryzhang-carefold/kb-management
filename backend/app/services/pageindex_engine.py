@@ -563,8 +563,10 @@ def _llm_build_piece(piece: str, base_offset: int, node_prefix: str) -> dict:
 def _split_by_heading(full_text: str, limit: int = MAX_DOC_CHARS) -> list[tuple[int, str]]:
     """按 heading 分片，每片 ≤ limit 字符。返回 [(start, piece_text)]。
 
-    无 heading 或单片即够时返回 [(0, full_text)]。
+    优先按标题切分；单个长章节仍按长度切分，原文和偏移完整保留。
     """
+    if limit <= 0:
+        raise ValueError('Partition limit must be positive')
     if len(full_text) <= limit:
         return [(0, full_text)]
     lines = full_text.split("\n")
@@ -576,23 +578,17 @@ def _split_by_heading(full_text: str, limit: int = MAX_DOC_CHARS) -> list[tuple[
             if pos > 0:
                 boundaries.append(pos)
         pos += len(ln) + 1
-    if len(boundaries) <= 1:
-        # 无 heading：按 limit 硬切
-        pieces = []
-        for i in range(0, len(full_text), limit):
-            pieces.append((i, full_text[i:i + limit]))
-        return pieces
-    # 把 heading 边界聚成 ≤ limit 的段
+    # Never assume the next heading fits: one section may exceed the limit.
     pieces: list[tuple[int, str]] = []
     seg_start = 0
-    for b in boundaries[1:] + [len(full_text)]:
-        if b - seg_start > limit:
-            # 找 seg_start..b 范围内最接近 limit 的边界
-            cut = max(x for x in boundaries if seg_start < x <= b and x - seg_start <= limit)
-            pieces.append((seg_start, full_text[seg_start:cut]))
-            seg_start = cut
-    if seg_start < len(full_text):
-        pieces.append((seg_start, full_text[seg_start:]))
+    while seg_start < len(full_text):
+        hard_end = min(seg_start + limit, len(full_text))
+        if hard_end == len(full_text):
+            cut = hard_end
+        else:
+            cut = max((x for x in boundaries if seg_start < x <= hard_end), default=hard_end)
+        pieces.append((seg_start, full_text[seg_start:cut]))
+        seg_start = cut
     return pieces
 
 

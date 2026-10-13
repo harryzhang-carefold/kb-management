@@ -2,6 +2,8 @@
 
 ## 2026-10-13
 
+- Fix PageIndex partitioning for sections longer than the input limit: use bounded splits when no heading fits, retain all source text and contiguous offsets, and cover Unicode and mixed short/long sections.
+
 - Parse XLSX text locally with the same original-cell parser instead of requiring MinerU. Keep the upload default PageIndex and the selected text-index type; native cell evidence remains a separate path.
 
 - Classify typed evidence validation/access failures as MCP invalid_input/forbidden without exposing rejected values or relying on error-text matching.
