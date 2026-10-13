@@ -11,6 +11,14 @@ from openpyxl.utils.cell import range_boundaries, get_column_letter
 PARSER_VERSION = f'xlsx-cells-1:openpyxl-{openpyxl.__version__}'
 
 
+class RecordSelectorError(ValueError):
+    """A query omitted explicitly configured record-key equality conditions."""
+    def __init__(self, required_columns, missing_columns):
+        super().__init__('Record query requires all configured equality filters')
+        self.required_columns = required_columns
+        self.missing_columns = missing_columns
+
+
 def encode(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
 
@@ -40,8 +48,12 @@ def bounds(value, limit=10000):
 def parse(data, configured_tables=None):
     configured_tables = configured_tables or []
     for item in configured_tables:
-        if not isinstance(item, dict) or set(item) != {'id', 'sheet', 'range', 'header_row'} or any(not isinstance(item[key], str) or not item[key] for key in ['id', 'sheet', 'range']) or type(item['header_row']) is not int:
+        required_keys = {'id', 'sheet', 'range', 'header_row'}
+        if not isinstance(item, dict) or not required_keys <= set(item) or set(item) - required_keys - {'required_filter_columns'} or any(not isinstance(item[key], str) or not item[key] for key in ['id', 'sheet', 'range']) or type(item['header_row']) is not int:
             raise ValueError('Table configuration requires explicit id, sheet, range and header_row')
+        required = item.get('required_filter_columns', [])
+        if not isinstance(required, list) or any(not isinstance(key, str) or not key for key in required) or len(set(required)) != len(required):
+            raise ValueError('Required filter columns must be distinct column IDs')
     try:
         with ZipFile(io.BytesIO(data)) as archive:
             if 'xl/workbook.xml' not in archive.namelist():
@@ -93,9 +105,12 @@ def parse(data, configured_tables=None):
                     key = get_column_letter(column)
                     columns.append({'id': key, 'header': scalar(sheet.cell(header, column).value),
                         'coordinate': f'{key}{header}', 'types': sorted(column_types.get(column, set()))})
+                required = entry.get('required_filter_columns', [])
+                if set(required) - {column['id'] for column in columns}:
+                    raise ValueError('Required filter column is outside its table')
                 tables.append({'id': str(entry['id']), 'range': entry['range'], 'header_row': header,
                     'first_data_row': header + 1, 'last_data_row': bottom - entry.get('totals_rows', 0),
-                    'columns': columns})
+                    'columns': columns} | ({'required_filter_columns': required} if required else {}))
             sheets.append({'id': ident, 'name': sheet.title, 'index': index, 'visibility': sheet.sheet_state,
                 'max_row': sheet.max_row, 'max_column': sheet.max_column,
                 'merged_ranges': [{'range': str(area), 'anchor': f'{get_column_letter(area.min_col)}{area.min_row}'}
@@ -125,6 +140,11 @@ def select(record, sheet_id, cell_range=None, table_id=None, filters=None, *, ro
         for condition in filters or []:
             if condition['column_id'] not in known or condition['operator'] not in ('eq', 'contains'):
                 raise ValueError('Invalid column or filter operator')
+        required = table.get('required_filter_columns', [])
+        equality_columns = {condition['column_id'] for condition in filters or [] if condition['operator'] == 'eq'}
+        missing = [column for column in required if column not in equality_columns]
+        if missing:
+            raise RecordSelectorError(required, missing)
     else:
         left, top, right, bottom = bounds(cell_range)
     if right > sheet['max_column'] or bottom > sheet['max_row']:

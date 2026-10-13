@@ -59,7 +59,24 @@ def test_actual_mcp_http_native_structure_read_and_verify(cells, monkeypatch):
     import mcp_server
     import importlib
     importlib.reload(mcp_server)  # MCP session managers have one lifespan per server.
-    record, _, _ = cells
+    record, ident, objects = cells
+    book = openpyxl.load_workbook(io.BytesIO(objects['original.xlsx']))
+    book.active.tables.clear()
+    file = io.BytesIO(); book.save(file); book.close()
+    from zipfile import ZipFile, ZIP_DEFLATED
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(file.getvalue())) as original, ZipFile(output, 'w', ZIP_DEFLATED) as modified:
+        for info in original.infolist():
+            body = original.read(info.filename)
+            if info.filename == 'xl/worksheets/sheet1.xml': body = body.replace(b'<v>197</v>', b'<v>197.0</v>')
+            modified.writestr(info, body)
+    objects['original.xlsx'] = output.getvalue()
+    with SessionLocal() as db:
+        doc = db.get(Document, ident)
+        doc.meta = dict(doc.meta) | {'spreadsheet_tables': [{'id': 'Rules', 'sheet': 'Actual Rules',
+            'range': 'A1:C4', 'header_row': 1, 'required_filter_columns': ['A', 'B']}]}
+        record = publish(doc, db); db.commit()
+    assert record['sheets'][0]['cells']['B2']['type'] == 'float'
     monkeypatch.setattr('app.knowledge.models.support_check', lambda *a: {'supported': True, 'reason': 'Actual original cell'})
     def message(client, method, params):
         response = client.post('/mcp', headers=headers() | {
@@ -81,8 +98,15 @@ def test_actual_mcp_http_native_structure_read_and_verify(cells, monkeypatch):
         sheets = tool(client, 'spreadsheet_get_structure', args(record)); sheet = sheets['sheets'][0]
         regions = tool(client, 'spreadsheet_get_structure', args(record) | {'sheet_id': sheet['id']})
         table = regions['regions'][0]
+        assert table['required_filter_columns'] == ['A', 'B']
         columns = tool(client, 'spreadsheet_get_structure', args(record) | {'sheet_id': sheet['id'], 'table_id': table['id']})
         assert [c['id'] for c in columns['columns']] == ['A', 'B', 'C']
+        assert columns['table']['required_filter_columns'] == ['A', 'B']
+        rejected = message(client, 'tools/call', {'name': 'spreadsheet_read_cells', 'arguments':
+            args(record) | {'sheet_id': sheet['id'], 'table_id': table['id'],
+                'filters': [{'column_id': 'B', 'operator': 'eq', 'value': 197}]}})
+        assert rejected['error']['code'] == -32602
+        assert rejected['error']['data'] == {'required_filter_columns': ['A', 'B'], 'missing_filter_columns': ['A']}
         read = tool(client, 'spreadsheet_read_cells', args(record) | {'sheet_id': sheet['id'], 'table_id': table['id'],
             'filters': [{'column_id': 'A', 'operator': 'eq', 'value': 'Reason'}, {'column_id': 'B', 'operator': 'eq', 'value': 197}]})
         item = read['evidence'][0]; assert read['reading']['complete'] and item['locator']['range'] == 'A2:C2'

@@ -121,3 +121,32 @@ def test_numeric_equality_uses_xlsx_number_semantics_without_text_or_bool_coerci
     _, result = spreadsheet.select(record,sheet['id'],table_id='RulesTable',filters=[
         {'column_id':'A','operator':'eq','value':'Reason'}, {'column_id':'B','operator':'eq','value':'197'}])
     assert len(result) == 1 and result[0]['locator']['range'] == 'A2:C2'
+
+
+def test_configured_required_filters_reject_partial_keys_without_affecting_other_tables():
+    config = [{'sheet':'Rules','id':'Business','range':'A1:C4','header_row':1,
+               'required_filter_columns':['A','B']}]
+    source = workbook()
+    record = spreadsheet.parse(source,config); sheet = record['sheets'][0]
+    assert sheet['tables'][1]['required_filter_columns'] == ['A','B']
+    with pytest.raises(spreadsheet.RecordSelectorError) as error:
+        spreadsheet.select(record,sheet['id'],table_id='Business',filters=[{'column_id':'B','operator':'eq','value':197}])
+    assert error.value.missing_columns == ['A']
+    with pytest.raises(spreadsheet.RecordSelectorError):
+        spreadsheet.select(record,sheet['id'],table_id='Business',filters=[
+            {'column_id':'A','operator':'contains','value':'Reason'},
+            {'column_id':'B','operator':'eq','value':197}])
+    with pytest.raises(spreadsheet.RecordSelectorError):
+        spreadsheet.select(record,sheet['id'],table_id='Business')
+    assert record['version'] != spreadsheet.parse(source,[{
+        k:v for k,v in config[0].items() if k != 'required_filter_columns'}])['version']
+    _, result=spreadsheet.select(record,sheet['id'],table_id='Business',filters=[
+        {'column_id':'A','operator':'eq','value':'Reason'}, {'column_id':'B','operator':'eq','value':197}])
+    assert len(result)==1 and result[0]['locator']['range']=='A4:C4'
+    # No contract change for sources that did not opt into required filters.
+    _, candidates=spreadsheet.select(record,sheet['id'],table_id='RulesTable',filters=[{'column_id':'B','operator':'eq','value':197}])
+    assert len(candidates)==1
+    _, by_range=spreadsheet.select(record,sheet['id'],cell_range='A4:C4')
+    assert len(by_range)==1
+    for columns in [['Z'],['A','A'],[1]]:
+        with pytest.raises(ValueError):spreadsheet.parse(source,[config[0]|{'required_filter_columns':columns}])

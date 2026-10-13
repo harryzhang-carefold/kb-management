@@ -2,6 +2,8 @@
 
 ## 2026-10-13
 
+- Support explicitly configured required equality-filter columns for native XLSX record queries. Expose the contract in discovered structure; reject incomplete selectors as MCP invalid_input with safe missing-column IDs. Keep unconfigured tables and raw range reading compatible; test real MCP HTTP rejection, typed AND reads and citations.
+
 - Match equal XLSX numeric values across int/float storage representations without coercing text or booleans. Retain original types and test the actual MCP workflow with integral floating-point source cells.
 
 - Keep XLSX text batches by actual worksheet/table/whole row with repeated headers and original coordinates. Only oversized rows become explicitly incomplete, losslessly reassemblable fragments. Validate stored offsets/hash before building; use existing editor region configuration without guessing headers or cross-row rules.
