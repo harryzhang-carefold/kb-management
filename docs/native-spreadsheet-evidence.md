@@ -9,6 +9,8 @@
 
 原生单元格解析使用固定的 openpyxl==3.1.5，**不调用 PageIndex SDK，不转 PDF**。原有 XLSX 文本索引继续工作，但它不等于原始单元格证据。版本包含文件哈希、实际解析器版本与表格配置。原生快照独立发布 `spreadsheet_evidence`；失败保留之前成功指针，不修改全文、旧树或索引类型。
 
+XLSX 上传默认仍为 PageIndex。文本提取在本地使用 openpyxl，随后进入原有 PageIndex/Embedding 文本索引路径，按上传时实际选择执行。它不依赖旧 MinerU 服务，不因增加原生单元格能力而自动切换为 Embedding；单元格读取和定位始终独立于 PageIndex SDK。
+
 管理员可调用 PUT `/api/v1/knowledge-bases/{kb_id}/documents/{doc_id}/spreadsheet-config`，body 为 `[{"id":"actual-table","sheet":"实际工作表","range":"A1:F100","header_row":1}]`；权限至少 editor，所有值来自实际文件与业务配置。POST 同一路径的 `/spreadsheet/rebuild` 重建。新上传/重解析 XLSX 自动排队补充原生证据；原生队列失败不使原有文本解析失败。
 
 对已有文档，管理员在已批准的版本化 checkout 中执行：

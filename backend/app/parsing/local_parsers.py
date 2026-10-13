@@ -1,4 +1,4 @@
-"""本地轻量解析器 — TXT / MD / HTML / PPTX（纯 CPU，毫秒级）。
+"""本地解析器 — TXT / MD / HTML / PPTX / XLSX。
 
 输出与 MinerU 路径保持一致：(markdown, meta)。
 PPTX 说明：PPT 中的表格多为图片（Office 不支持原生表格对象），本地按
@@ -32,6 +32,33 @@ def parse_md(data: bytes, filename: str) -> tuple[str, dict]:
     if not text.strip():
         raise ValueError("文本内容为空")
     return text.strip(), _meta("md", filename)
+
+
+def parse_xlsx(data: bytes, filename: str) -> tuple[str, dict]:
+    """Extract original cells for text indexing, without inventing business headers.
+
+    The index type is chosen by the upload contract, not this parser. This text
+    is discovery material; authoritative cell citations use native evidence.
+    """
+    from app.knowledge import spreadsheet
+    record = spreadsheet.parse(data)
+    parts = []
+    for sheet in record['sheets']:
+        rows = {}
+        for cell in sorted(sheet['cells'].values(), key=lambda c: (c['row'], c['column'])):
+            value = cell['value']
+            if cell['formula'] is not None:
+                value = {'formula': cell['formula'], 'cached_value': value,
+                         'cached_value_available': cell['cached_value_available']}
+            rows.setdefault(cell['row'], {})[cell['coordinate']] = value
+        if rows:
+            parts.append('## ' + sheet['name'] + '\n\n' +
+                         '\n'.join(spreadsheet.encode(row) for row in rows.values()))
+    if not parts:
+        raise ValueError('XLSX 未提取到任何单元格内容')
+    return '\n\n'.join(parts), _meta('xlsx', filename,
+        parse_engine='local-openpyxl', parser_version=spreadsheet.PARSER_VERSION,
+        sheet_count=len(record['sheets']), sheet_names=[s['name'] for s in record['sheets']])
 
 
 def parse_html(data: bytes, filename: str) -> tuple[str, dict]:

@@ -45,6 +45,47 @@ def call(name, values, actor='test-actor', invocation='invocation-1'):
 def args(record): return {'document_id': record['document_id'], 'version': record['version']}
 
 
+def test_default_upload_parse_keeps_pageindex_and_builds_native_cells(cells, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.api import documents
+    from app.core.database import get_db
+    from app.api.deps import get_current_user
+    from app.workers import tasks
+    from types import SimpleNamespace
+    _, _, objects = cells
+    queued = []
+    monkeypatch.setattr(documents.minio_client, 'put_object', lambda key, data, **kw: objects.__setitem__(key, data))
+    for name in ['parse_document_task', 'chunk_index_task', 'build_spreadsheet_evidence_task', 'build_pageindex_task']:
+        monkeypatch.setattr(getattr(tasks, name), 'delay', lambda *a, _name=name, **kw: queued.append((_name, a)) or SimpleNamespace(id='queued'))
+    monkeypatch.setattr('app.parsing.router.parse_with_mineru', lambda *a: pytest.fail('XLSX needed MinerU'))
+    with SessionLocal() as db:
+        owner = db.query(User).filter_by(username='owner').one()
+        kb = db.query(KnowledgeBase).filter_by(owner_id=owner.id).one()
+        app = FastAPI(); app.include_router(documents.router, prefix='/api/v1')
+        app.dependency_overrides[get_db] = lambda: db
+        app.dependency_overrides[get_current_user] = lambda: owner
+        with TestClient(app) as client:
+            response = client.post(f'/api/v1/knowledge-bases/{kb.id}/documents', files={
+                'file': ('new-methods.xlsx', objects['original.xlsx'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')})
+        assert response.status_code == 200
+        body = response.json()['data']; ident = UUID(body['document_id'])
+        assert db.get(Document, ident).meta['index_type'] == 'pageindex'
+    tasks.parse_document_task.run(str(ident), body['task_id'])
+    with SessionLocal() as db:
+        doc = db.get(Document, ident)
+        assert doc.status == 'parsed' and 'Check prior authorization' in doc.full_text
+        assert doc.meta['index_type'] == 'pageindex' and doc.meta['parse_engine'] == 'local-openpyxl'
+    tasks.chunk_index_task.run(str(ident), body['task_id'])
+    assert any(name == 'build_pageindex_task' for name, _ in queued)
+    assert any(name == 'build_spreadsheet_evidence_task' for name, _ in queued)
+    tasks.build_spreadsheet_evidence_task.run(str(ident))
+    with SessionLocal() as db:
+        doc = db.get(Document, ident)
+        assert doc.meta['spreadsheet_status'] == 'ready' and doc.meta['index_type'] == 'pageindex'
+        assert 'Check prior authorization' in doc.full_text
+
+
 def test_discovery_and_original_cell_workflow_preserve_existing_index(cells, monkeypatch):
     record, ident, _ = cells
     # A native XLSX operation must not touch either PDF SDK entry.

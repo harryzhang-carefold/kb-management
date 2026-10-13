@@ -2,6 +2,8 @@
 
 ## 2026-10-13
 
+- Parse XLSX text locally with the same original-cell parser instead of requiring MinerU. Keep the upload default PageIndex and the selected text-index type; native cell evidence remains a separate path.
+
 - Classify typed evidence validation/access failures as MCP invalid_input/forbidden without exposing rejected values or relying on error-text matching.
 
 - Make the versioned deployment stop duplicate legacy systemd units only when their ExecStart belongs to this exact checkout; prevent an old unit from reclaiming port 9012 during release.

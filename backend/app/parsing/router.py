@@ -32,7 +32,7 @@ _EXT_MAP = {
 
 # 走 MinerU 的类型（MinerU 官方原生支持）
 # PPTX 走本地 python-pptx（PPT 表格多为图片，MinerU 提取效果不稳定）
-_MINERU_TYPES = {"pdf", "docx", "xlsx", "jpg", "png", "bmp", "webp", "tiff"}
+_MINERU_TYPES = {"docx", "jpg", "png", "bmp", "webp", "tiff"}
 
 
 def detect_file_type(filename: str):
@@ -62,6 +62,8 @@ def parse_document(data: bytes, filename: str, file_type: str | None = None) -> 
             return local_parsers.parse_html(data, filename)
         if ftype == "pptx":
             return local_parsers.parse_pptx(data, filename)
+        if ftype == "xlsx":
+            return local_parsers.parse_xlsx(data, filename)
         if ftype == 'pdf':
             from app.knowledge.ingestion import parse_pdf
             return parse_pdf(data, filename)

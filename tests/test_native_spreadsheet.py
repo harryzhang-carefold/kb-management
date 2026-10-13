@@ -23,6 +23,30 @@ def workbook():
     stream = io.BytesIO(); book.save(stream); return stream.getvalue()
 
 
+def test_xlsx_text_parse_does_not_require_mineru_or_guess_headers(monkeypatch):
+    from app.parsing import parse_document
+    monkeypatch.setattr('app.parsing.router.parse_with_mineru', lambda *a: pytest.fail('XLSX called unavailable MinerU'))
+    text, meta = parse_document(workbook(), 'methods.xlsx', 'xlsx')
+    assert 'Rules' in text and 'Check the actual authorization.' in text
+    assert 'Hidden' in text and '=1+1' in text
+    assert 'cached_value_available' in text and 'false' in text
+    assert meta['source_type'] == 'xlsx' and meta['sheet_count'] == 2
+    assert meta['parse_engine'] == 'local-openpyxl'
+    book = openpyxl.Workbook(); book.active.title = 'Different sheet'
+    book.active['D7'] = 'Literal | text\nwith lines'; book.active['A9'] = 0
+    stream = io.BytesIO(); book.save(stream)
+    text, _ = parse_document(stream.getvalue(), 'other.xlsx')
+    assert 'D7' in text and 'Literal | text' in text and 'A9' in text
+
+
+def test_empty_and_invalid_xlsx_are_rejected_by_normal_parse_entry(monkeypatch):
+    from app.parsing import parse_document, ParseError
+    monkeypatch.setattr('app.parsing.router.parse_with_mineru', lambda *a: pytest.fail('XLSX called MinerU'))
+    book = openpyxl.Workbook(); stream = io.BytesIO(); book.save(stream)
+    for data in (b'invalid', stream.getvalue()):
+        with pytest.raises(ParseError): parse_document(data, 'empty.xlsx')
+
+
 def test_native_workbook_preserves_types_formulas_merges_and_real_coordinates():
     record = spreadsheet.parse(workbook()); sheet = record['sheets'][0]
     assert sheet['tables'][0]['columns'][1]['types'] == ['int', 'str']
