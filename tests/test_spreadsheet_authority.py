@@ -23,7 +23,15 @@ def cells(monkeypatch):
     sheet.append(['Code Type', 'Code', 'Action']); sheet.append(['Reason', 197, 'Check prior authorization'])
     sheet.append(['Status', 197, 'A different workflow']); sheet.append(['Reason', '197', 'Text-code workflow'])
     sheet.add_table(Table(displayName='Rules', ref='A1:C4'))
-    file = io.BytesIO(); book.save(file); objects['original.xlsx'] = file.getvalue()
+    file = io.BytesIO(); book.save(file)
+    from zipfile import ZipFile, ZIP_DEFLATED
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(file.getvalue())) as original, ZipFile(output, 'w', ZIP_DEFLATED) as modified:
+        for info in original.infolist():
+            body = original.read(info.filename)
+            if info.filename == 'xl/worksheets/sheet1.xml': body = body.replace(b'<v>197</v>', b'<v>197.0</v>')
+            modified.writestr(info, body)
+    objects['original.xlsx'] = output.getvalue()
     with SessionLocal() as db:
         owner = User(username='owner', email='owner@test.invalid', password_hash='fixture', role='user')
         outsider = User(username='outsider', email='outsider@test.invalid', password_hash='fixture', role='user')
@@ -181,7 +189,15 @@ def test_native_acl_version_and_receipts_are_rechecked(cells, monkeypatch):
 def test_partial_long_cells_cannot_be_verified_and_cursor_is_invocation_bound(cells, monkeypatch):
     record, ident, objects = cells
     book = openpyxl.load_workbook(io.BytesIO(objects['original.xlsx'])); book.active['C2'] = '长内容🙂' * 5000
-    file = io.BytesIO(); book.save(file); objects['original.xlsx'] = file.getvalue()
+    file = io.BytesIO(); book.save(file)
+    from zipfile import ZipFile, ZIP_DEFLATED
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(file.getvalue())) as original, ZipFile(output, 'w', ZIP_DEFLATED) as modified:
+        for info in original.infolist():
+            body = original.read(info.filename)
+            if info.filename == 'xl/worksheets/sheet1.xml': body = body.replace(b'<v>197</v>', b'<v>197.0</v>')
+            modified.writestr(info, body)
+    objects['original.xlsx'] = output.getvalue()
     with SessionLocal() as db: record = publish(db.get(Document, ident), db); db.commit()
     sheet = record['sheets'][0]; selection = args(record) | {'sheet_id': sheet['id'], 'cell_range': 'C2:C2', 'max_chars': 3000}
     read = call('spreadsheet_read_cells', selection); first = read['evidence'][0]
@@ -205,7 +221,15 @@ def test_table_windows_preserve_all_matches_and_sparse_filtering(cells):
     sheet = book.active
     for row in range(5, 605): sheet.append(['Reason', row, 'Workflow row'])
     sheet.tables['Rules'].ref = 'A1:C604'
-    file = io.BytesIO(); book.save(file); objects['original.xlsx'] = file.getvalue()
+    file = io.BytesIO(); book.save(file)
+    from zipfile import ZipFile, ZIP_DEFLATED
+    output = io.BytesIO()
+    with ZipFile(io.BytesIO(file.getvalue())) as original, ZipFile(output, 'w', ZIP_DEFLATED) as modified:
+        for info in original.infolist():
+            body = original.read(info.filename)
+            if info.filename == 'xl/worksheets/sheet1.xml': body = body.replace(b'<v>197</v>', b'<v>197.0</v>')
+            modified.writestr(info, body)
+    objects['original.xlsx'] = output.getvalue()
     with SessionLocal() as db: record = publish(db.get(Document, ident), db); db.commit()
     selection = args(record) | {'sheet_id': record['sheets'][0]['id'], 'table_id': 'Rules', 'max_chars': 24000}
     seen = set(); read = None; cursors = set()

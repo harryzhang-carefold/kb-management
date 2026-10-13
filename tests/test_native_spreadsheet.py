@@ -98,3 +98,26 @@ def test_large_cell_is_delivered_losslessly_and_cursor_cannot_change_binding():
     assert ''.join(texts) == entries[0]['text']
     assert fully_read([(row[2], row[3]) for row in spans], len(entries[0]['text']))
     assert not fully_read([(spans[0][2], spans[0][3])], len(entries[0]['text']))
+
+
+def test_numeric_equality_uses_xlsx_number_semantics_without_text_or_bool_coercion():
+    from zipfile import ZipFile, ZIP_DEFLATED
+    # Excel writes integral numbers either as 197 or 197.0. openpyxl preserves
+    # that storage detail as int/float; it is not a distinct business-code type.
+    data = workbook(); output = io.BytesIO()
+    with ZipFile(io.BytesIO(data)) as original, ZipFile(output,'w',ZIP_DEFLATED) as modified:
+        for info in original.infolist():
+            body = original.read(info.filename)
+            if info.filename == 'xl/worksheets/sheet1.xml': body = body.replace(b'<v>197</v>',b'<v>197.0</v>')
+            modified.writestr(info,body)
+    record = spreadsheet.parse(output.getvalue()); sheet = record['sheets'][0]
+    assert sheet['cells']['B4']['type'] == 'float'
+    _, result = spreadsheet.select(record,sheet['id'],table_id='RulesTable',filters=[
+        {'column_id':'A','operator':'eq','value':'Reason'}, {'column_id':'B','operator':'eq','value':197}])
+    assert len(result) == 1 and result[0]['locator']['range'] == 'A4:C4'
+    assert '"type":"float"' in result[0]['text']
+    _, result = spreadsheet.select(record,sheet['id'],table_id='RulesTable',filters=[{'column_id':'B','operator':'eq','value':True}])
+    assert not result
+    _, result = spreadsheet.select(record,sheet['id'],table_id='RulesTable',filters=[
+        {'column_id':'A','operator':'eq','value':'Reason'}, {'column_id':'B','operator':'eq','value':'197'}])
+    assert len(result) == 1 and result[0]['locator']['range'] == 'A2:C2'

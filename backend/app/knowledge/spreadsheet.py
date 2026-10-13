@@ -140,7 +140,11 @@ def select(record, sheet_id, cell_range=None, table_id=None, filters=None, *, ro
             expected = condition['value']
             if condition['operator'] == 'contains':
                 return type(value) is str and type(expected) is str and expected in value
-            return type(value) is type(expected) and value == expected
+            # XLSX numeric cells can round-trip as either int or float. Equal
+            # numbers retain their original returned type; strings and bools
+            # are never coerced into the numeric domain.
+            same_domain = (type(value) in (int, float) and type(expected) in (int, float)) or type(value) is type(expected)
+            return same_domain and value == expected
         if not all(matches(condition) for condition in filters or []):
             continue
         area = f'{get_column_letter(left)}{row}:{get_column_letter(right)}{row}'

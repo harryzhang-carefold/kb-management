@@ -2,6 +2,8 @@
 
 ## 2026-10-13
 
+- Match equal XLSX numeric values across int/float storage representations without coercing text or booleans. Retain original types and test the actual MCP workflow with integral floating-point source cells.
+
 - Keep XLSX text batches by actual worksheet/table/whole row with repeated headers and original coordinates. Only oversized rows become explicitly incomplete, losslessly reassemblable fragments. Validate stored offsets/hash before building; use existing editor region configuration without guessing headers or cross-row rules.
 - Fix the actual MCP structure wrapper leaking a closure through locals(); test real HTTP discovery, structure, typed AND filtering and cell verification.
 - Apply tree budgets to validated local trees and their composition separately; reject invalid retry trees. Bound model-build concurrency and retain source order to reduce long-document build latency.

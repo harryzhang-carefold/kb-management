@@ -4,7 +4,7 @@
 
 1. `knowledge_discover`：不指定 kb_id 时按 offset/limit 返回已授权集合；指定实际 kb_id 返回候选文档、版本及 read_methods。`evidence.parsed_text` 与 `evidence.native_cells` 是两条不同的读取凭据，使用各自实际 document_id/version。
 2. `spreadsheet_get_structure`：无 sheet_id 时发现工作表；指定真实 sheet_id 时分页读表格/合并区域；再指定实际 table_id 时分页读列。不能从空表头猜业务字段。
-3. `spreadsheet_read_cells`：指定真实 sheet_id，选择 cell_range 或已发现 table_id；列条件支持 eq、contains 与 AND。数字和文本编号保持区别，公式缓存缺失时不能作为已知值过滤。正文按签名 cursor 完整续读，scope、原始文件、版本与筛选绑定；工作表序号只在内部使用，输出没有合成 PDF 页。
+3. `spreadsheet_read_cells`：指定真实 sheet_id，选择 cell_range 或已发现 table_id；列条件支持 eq、contains 与 AND。数字等值比较按 XLSX 数值语义处理（197 与 197.0 等值），原始输出类型保留；数字与文本编号、布尔值保持区别，公式缓存缺失时不能作为已知值过滤。正文按签名 cursor 完整续读，scope、原始文件、版本与筛选绑定；工作表序号只在内部使用，输出没有合成 PDF 页。
 4. `spreadsheet_verify_citations`：提交本次完整读取的 evidence_id、sheet_id、cell_range 和 claim。返回真实 cells locator，定位与内容支持分别记录。跨 Invocation、撤权、过期或未读完不能核验。
 
 原生单元格解析使用固定的 openpyxl==3.1.5，**不调用 PageIndex SDK，不转 PDF**。原有 XLSX 文本索引继续工作，但它不等于原始单元格证据。版本包含文件哈希、实际解析器版本与表格配置。原生快照独立发布 `spreadsheet_evidence`；失败保留之前成功指针，不修改全文、旧树或索引类型。
