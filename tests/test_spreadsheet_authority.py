@@ -45,6 +45,45 @@ def call(name, values, actor='test-actor', invocation='invocation-1'):
 def args(record): return {'document_id': record['document_id'], 'version': record['version']}
 
 
+def test_actual_mcp_http_native_structure_read_and_verify(cells, monkeypatch):
+    import json
+    from starlette.testclient import TestClient
+    import mcp_server
+    import importlib
+    importlib.reload(mcp_server)  # MCP session managers have one lifespan per server.
+    record, _, _ = cells
+    monkeypatch.setattr('app.knowledge.models.support_check', lambda *a: {'supported': True, 'reason': 'Actual original cell'})
+    def message(client, method, params):
+        response = client.post('/mcp', headers=headers() | {
+            'accept': 'application/json, text/event-stream', 'mcp-protocol-version': '2025-11-25'},
+            json={'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params})
+        assert response.status_code == 200
+        if response.headers['content-type'].startswith('application/json'): return response.json()
+        return json.loads(next(line[6:] for line in response.text.splitlines() if line.startswith('data: ')))
+    def tool(client, name, values):
+        response = message(client, 'tools/call', {'name': name, 'arguments': values})
+        assert 'error' not in response, response
+        result = response['result']; assert not result.get('isError'), result
+        return json.loads(result['content'][0]['text'])
+    with TestClient(mcp_server.streamable_app, base_url='http://127.0.0.1:9100') as client:
+        message(client, 'initialize', {'protocolVersion': '2025-11-25', 'capabilities': {},
+            'clientInfo': {'name': 'native-cell-contract', 'version': '1'}})
+        documents = tool(client, 'knowledge_discover', {'kb_id': record['kb_id']})
+        assert documents['documents'][0]['evidence']['native_cells']['version'] == record['version']
+        sheets = tool(client, 'spreadsheet_get_structure', args(record)); sheet = sheets['sheets'][0]
+        regions = tool(client, 'spreadsheet_get_structure', args(record) | {'sheet_id': sheet['id']})
+        table = regions['regions'][0]
+        columns = tool(client, 'spreadsheet_get_structure', args(record) | {'sheet_id': sheet['id'], 'table_id': table['id']})
+        assert [c['id'] for c in columns['columns']] == ['A', 'B', 'C']
+        read = tool(client, 'spreadsheet_read_cells', args(record) | {'sheet_id': sheet['id'], 'table_id': table['id'],
+            'filters': [{'column_id': 'A', 'operator': 'eq', 'value': 'Reason'}, {'column_id': 'B', 'operator': 'eq', 'value': 197}]})
+        item = read['evidence'][0]; assert read['reading']['complete'] and item['locator']['range'] == 'A2:C2'
+        verified = tool(client, 'spreadsheet_verify_citations', args(record) | {'citations': [{
+            'sheet_id': sheet['id'], 'cell_range': item['locator']['range'], 'evidence_id': item['id'],
+            'claim': 'Check prior authorization for the Reason code.'}]})
+        assert verified['citations'][0]['support_status'] == 'checked'
+
+
 def test_default_upload_parse_keeps_pageindex_and_builds_native_cells(cells, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -203,7 +242,7 @@ def test_admin_configuration_and_native_queue_failure_preserve_text_success(cell
         with pytest.raises(APIError): configure_spreadsheet(UUID(record['kb_id']), ident, [], db, reader)
         with pytest.raises(APIError): configure_spreadsheet(UUID(record['kb_id']), ident, [{'sheet': 'Missing', 'id': 'other', 'range': 'A1:C4', 'header_row': 1}], db, owner)
         assert 'spreadsheet_tables' not in db.get(Document, ident).meta
-    monkeypatch.setattr('app.parsing.parse_document', lambda *a: ('Successful text parse', {'parser': 'original-text-path'}))
+    monkeypatch.setattr('app.parsing.parse_document', lambda *a, **kw: ('Successful text parse', {'parser': 'original-text-path'}))
     queued = []
     monkeypatch.setattr(tasks.chunk_index_task, 'delay', lambda *a: queued.append(a))
     def failed_queue(*a): raise RuntimeError('Native queue unavailable')

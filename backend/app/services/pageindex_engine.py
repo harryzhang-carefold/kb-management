@@ -142,7 +142,7 @@ def _extract_json(text: str) -> dict:
     raise ValueError("LLM 输出 JSON 不完整")
 
 
-def _validate_tree(tree: dict, full_len: int) -> list[str]:
+def _validate_tree(tree: dict, full_len: int, *, max_nodes: int = MAX_NODES, max_depth: int = MAX_DEPTH) -> list[str]:
     """校验树结构（设计 §3.1 输出后校验）。返回错误列表，空列表=通过。"""
     errors: list[str] = []
     root = tree.get("root")
@@ -155,11 +155,11 @@ def _validate_tree(tree: dict, full_len: int) -> list[str]:
     def walk(node: dict, depth: int, parent: Optional[tuple[int, int]], path: str):
         nonlocal node_count
         node_count += 1
-        if node_count > MAX_NODES:
-            errors.append(f"节点数 {node_count} 超上限 {MAX_NODES}")
+        if node_count > max_nodes:
+            errors.append(f"节点数 {node_count} 超上限 {max_nodes}")
             return
-        if depth > MAX_DEPTH:
-            errors.append(f"深度 {depth} 超上限 {MAX_DEPTH}")
+        if depth > max_depth:
+            errors.append(f"深度 {depth} 超上限 {max_depth}")
             return
         title = node.get("title")
         if not isinstance(title, str) or not title.strip():
@@ -538,11 +538,12 @@ def _llm_build_piece(piece: str, base_offset: int, node_prefix: str) -> dict:
         )
         try:
             data2, root2 = _attempt(messages[:1] + [{"role": "user", "content": retry_user}])
-            if not _validate_tree(data2, len(piece)):
-                data, root = data2, root2
+            errors2 = _validate_tree(data2, len(piece))
+            if errors2:
+                raise ValueError('Tree retry failed source/structure validation: ' + '; '.join(errors2[:5]))
+            data, root = data2, root2
         except Exception:
-            if root is None:
-                raise  # 两次都没拿到可用 JSON → 交由上层降级
+            raise  # Invalid first/retry trees are never silently published.
 
     # 平移偏移 + 重编号节点
     assert isinstance(root, dict)  # 两次都没拿到可用 JSON 时已在上面 raise
@@ -592,6 +593,28 @@ def _split_by_heading(full_text: str, limit: int = MAX_DOC_CHARS) -> list[tuple[
     return pieces
 
 
+def _document_pieces(document, full_text):
+    layout = (document.meta or {}).get('spreadsheet_text')
+    if document.file_type == 'xlsx' and layout:
+        from app.parsing.spreadsheet_text import partitions
+        return partitions(full_text, layout, MAX_DOC_CHARS)
+    return _split_by_heading(full_text)
+
+
+def _build_pieces(pieces):
+    """Bound independent model calls; combine results in original source order.
+
+    Worker threads never receive a database session or document mutation.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    def build(item):
+        index, (start, piece) = item
+        prefix = f'n1.{index + 1}' if len(pieces) > 1 else 'n1'
+        return _llm_build_piece(piece, start, prefix)
+    with ThreadPoolExecutor(max_workers=min(settings.pageindex_build_concurrency, len(pieces))) as pool:
+        return list(pool.map(build, enumerate(pieces)))
+
+
 def build_tree_index(document: Document, db, *, force: bool = False) -> dict:
     """生成树并写入 document.meta['pageindex_tree']，返回树 meta。
 
@@ -609,14 +632,11 @@ def build_tree_index(document: Document, db, *, force: bool = False) -> dict:
     if not full_text.strip():
         raise ValueError("full_text 为空，无法建树")
 
-    pieces = _split_by_heading(full_text)
+    pieces = _document_pieces(document, full_text)
     root_children: list[dict] = []
     status = "ok"
     try:
-        for i, (start, piece) in enumerate(pieces):
-            prefix = f"n1.{i + 1}" if len(pieces) > 1 else "n1"
-            child = _llm_build_piece(piece, start, prefix)
-            root_children.append(child)
+        root_children = _build_pieces(pieces)
     except Exception as e:
         logger.warning(f"[pageindex] LLM 建树失败（doc={document.id}）: {e} → 降级 heading 规则树")
         root = _heading_degraded_tree(full_text)
@@ -649,7 +669,11 @@ def build_tree_index(document: Document, db, *, force: bool = False) -> dict:
     # 整树结构校验（只查硬性错误：越界/重叠/超节点数/超深度；
     # 分片合并树的覆盖度允许片段间有空隙）
     if status == "ok":
-        errors = _validate_tree({"root": root}, len(full_text))
+        # Each local tree still has MAX_NODES/MAX_DEPTH. Composition adds
+        # exactly one root and combines disjoint source ranges.
+        errors = _validate_tree({"root": root}, len(full_text),
+            max_nodes=MAX_NODES * len(pieces) + (1 if len(pieces) > 1 else 0),
+            max_depth=MAX_DEPTH + (1 if len(pieces) > 1 else 0))
         hard = [e for e in errors
                 if ("越界" in e or "超出父区间" in e or "重叠" in e
                     or "超上限" in e or "end(" in e

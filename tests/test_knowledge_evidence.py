@@ -178,6 +178,8 @@ def test_deletion_reclaims_source_and_evidence(source):
 def test_mcp_http_preserves_tools_and_authenticated_evidence(source):
     from starlette.testclient import TestClient
     import mcp_server
+    import importlib
+    importlib.reload(mcp_server)  # Independent HTTP server for each lifespan.
     record, _, _ = source
     def message(client, method, params=None):
         response = client.post('/mcp', headers=headers() | {

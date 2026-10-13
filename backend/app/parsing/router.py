@@ -46,7 +46,7 @@ def detect_file_type(filename: str):
     return None
 
 
-def parse_document(data: bytes, filename: str, file_type: str | None = None) -> tuple[str, dict]:
+def parse_document(data: bytes, filename: str, file_type: str | None = None, *, spreadsheet_tables=None) -> tuple[str, dict]:
     """统一解析入口。返回 (markdown 正文, meta 字典)。失败抛 ParseError。"""
     ftype = file_type or detect_file_type(filename)
     if not ftype:
@@ -63,7 +63,7 @@ def parse_document(data: bytes, filename: str, file_type: str | None = None) -> 
         if ftype == "pptx":
             return local_parsers.parse_pptx(data, filename)
         if ftype == "xlsx":
-            return local_parsers.parse_xlsx(data, filename)
+            return local_parsers.parse_xlsx(data, filename, spreadsheet_tables)
         if ftype == 'pdf':
             from app.knowledge.ingestion import parse_pdf
             return parse_pdf(data, filename)

@@ -69,7 +69,8 @@ def parse_document_task(self, document_id: str, task_id: str):
             build_pdf_index(doc, db)
             text, meta = doc.full_text, dict(doc.meta or {})
         else:
-            text, meta = _parse(data, doc.filename, doc.file_type)
+            text, meta = _parse(data, doc.filename, doc.file_type,
+                spreadsheet_tables=(doc.meta or {}).get('spreadsheet_tables'))
 
         # 存全文 + 元数据（v2：保留 index_type，解析 meta 不覆盖）
         old_meta = dict(doc.meta or {})

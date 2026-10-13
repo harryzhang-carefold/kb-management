@@ -1,3 +1,5 @@
+> Current XLSX implementation (2026-10-13): local openpyxl extraction with row-aware bounded PageIndex text batches. XLSX does not require MinerU. Native cell evidence is separate; see [原始 XLSX 契约](native-spreadsheet-evidence.md). The earlier proposed MinerU XLSX route below is historical, not an implementation instruction.
+
 # 文档解析策略设计（Parsing Strategy）
 
 > 版本：v2.0（MinerU 统一解析架构，已按用户决策定稿，进入实施）

@@ -2,6 +2,10 @@
 
 ## 2026-10-13
 
+- Keep XLSX text batches by actual worksheet/table/whole row with repeated headers and original coordinates. Only oversized rows become explicitly incomplete, losslessly reassemblable fragments. Validate stored offsets/hash before building; use existing editor region configuration without guessing headers or cross-row rules.
+- Fix the actual MCP structure wrapper leaking a closure through locals(); test real HTTP discovery, structure, typed AND filtering and cell verification.
+- Apply tree budgets to validated local trees and their composition separately; reject invalid retry trees. Bound model-build concurrency and retain source order to reduce long-document build latency.
+
 - Fix PageIndex partitioning for sections longer than the input limit: use bounded splits when no heading fits, retain all source text and contiguous offsets, and cover Unicode and mixed short/long sections.
 
 - Parse XLSX text locally with the same original-cell parser instead of requiring MinerU. Keep the upload default PageIndex and the selected text-index type; native cell evidence remains a separate path.
