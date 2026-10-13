@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-13
+
+- Classify typed evidence validation/access failures as MCP invalid_input/forbidden without exposing rejected values or relying on error-text matching.
+
+- Make the versioned deployment stop duplicate legacy systemd units only when their ExecStart belongs to this exact checkout; prevent an old unit from reclaiming port 9012 during release.
+
+- Add authorized collection/document discovery and native XLSX structure, bounded cell reads and citation verification to the existing 9100 service. Keep all ten existing tools and parsed-text/PDF retrieval paths.
+- Preserve original types, coordinates, merges, formula/cache status and source/config/parser versions. Publish native snapshots independently; failed builds and queueing retain existing text/index evidence.
+- Add editor-only table/header configuration and explicit existing-source rebuild management. Keep Agent knowledge access read-only.
+- Validate native cell workflows, actual PostgreSQL membership, current-Invocation receipts, source changes and full Unicode continuation; prohibit PageIndex SDK/PDF use in the native path.
+
 ## 2026-10-12
 
 - Use purple PageIndex method tags in document lists, search results and document previews; keep failure status red. Adopt existing successful text indexes into evidence without changing their uploaded files or directory trees.

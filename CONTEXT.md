@@ -1,0 +1,11 @@
+# Knowledge Module Context
+
+The current endpoint is the existing kb-management MCP on port 9100. Preserve the six original KB tools, four existing full-evidence tools, PDF/OCR, logical text evidence, Embedding/PageIndex/auto routing, upload/reparse/rebuild, successful pointers, versions and actual membership permissions. The former independent 9383 service is retired. Carefold knowledge remains independent of Feynman and separate from Agent Memory.
+
+A Knowledge Source is an existing permissioned document. Native XLSX cell evidence is an additive, independently published artifact for that source; existing parsed-text discovery/indexing is not a cell locator. Native cell parsing never calls PageIndex SDK and never converts PDF to invent cell coordinates. Use real worksheet names, row/column coordinates, source hashes and parser/configuration versions. Keep raw types, number formats, merges, formulas and saved values; unavailable formula results are not zero. Missing business headers require explicit administrator configuration, not guessing.
+
+Knowledge retrieval is read-only for the Agent. Original-source/region configuration and rebuilding use existing administrator/editor permissions or trusted management commands. Scope is created by the Agent Runtime; categories do not grant permissions. Reauthorize each read/continuation and after content verification. Only fully delivered current-Invocation evidence may support citations; location and semantic support are distinct.
+
+Business work is owned by the Agent Runtime and the actual business Authority, not this Knowledge Module. One generic knowledge-guided-execution Skill guides different methods. Customers provide goals and necessary facts, not internal procedure/team names. Workflow citations stay internal for business work; ordinary knowledge Q&A retains readable citations. Run success does not prove the external business problem is resolved. Current scope changes Agent and kb-management only; SaaS business APIs belong to the backend team.
+
+Do not replace existing APIs or use uncommitted server files as versioned release code. Agent publishes origin/test through GitHub Actions to 35.209.183.7. Knowledge Module uses its approved feat/pageindex versioned deployment entry. Preserve other people's uncommitted files and never publish synthetic test documents to production knowledge.

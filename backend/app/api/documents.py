@@ -13,12 +13,51 @@ from app.core.responses import ok, not_found, param_error
 from app.schemas import schemas
 from app.models import *
 from app.api.deps import get_current_user, get_current_user_or_view_token, require_kb_access, ViewTokenContext
-from app.workers.tasks import parse_document_task, cleanup_document_task
+from app.workers.tasks import parse_document_task, cleanup_document_task, build_spreadsheet_evidence_task
 from app.utils.doc_parser import detect_file_type
 from app.utils.minio_client import minio_client
 from app.utils.es_client import es_client
 
 router = APIRouter(tags=["文档管理"])
+
+
+@router.put('/knowledge-bases/{kb_id}/documents/{doc_id}/spreadsheet-config')
+def configure_spreadsheet(kb_id: UUID, doc_id: UUID, tables: list[dict],
+                         db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Explicit header/range configuration; knowledge readers cannot modify it."""
+    from app.knowledge.spreadsheet import parse
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb: raise not_found('知识库不存在')
+    require_kb_access(user, kb, min_role='editor')
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).with_for_update().first()
+    if doc is None: raise not_found('文档不存在')
+    if doc.file_type != 'xlsx': raise param_error('原始单元格配置仅适用于 XLSX')
+    if len(tables) > 100: raise param_error('表格配置数量超限')
+    try:
+        # Native validation happens before changing a stored configuration.
+        parsed = parse(minio_client.get_object(doc.minio_key), tables)
+        names = {sheet['name'] for sheet in parsed['sheets']}
+        if any(item.get('sheet') not in names for item in tables):
+            raise ValueError('Configured worksheet does not exist')
+    except (ValueError, KeyError, TypeError):
+        raise param_error('无效的工作表、表头或表格区域') from None
+    doc.meta = dict(doc.meta or {}) | {'spreadsheet_tables': tables, 'spreadsheet_status': 'building'}
+    db.commit()
+    task = build_spreadsheet_evidence_task.delay(str(doc_id))
+    return ok({'task_id': task.id})
+
+
+@router.post('/knowledge-bases/{kb_id}/documents/{doc_id}/spreadsheet/rebuild')
+def rebuild_spreadsheet(kb_id: UUID, doc_id: UUID,
+                       db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    kb = db.query(KnowledgeBase).filter_by(id=kb_id, is_deleted=False).first()
+    if not kb: raise not_found('知识库不存在')
+    require_kb_access(user, kb, min_role='editor')
+    doc = db.query(Document).filter_by(id=doc_id, kb_id=kb_id, is_deleted=False).first()
+    if doc is None: raise not_found('文档不存在')
+    if doc.file_type != 'xlsx': raise param_error('原始单元格读取仅适用于 XLSX')
+    task = build_spreadsheet_evidence_task.delay(str(doc_id))
+    return ok({'task_id': task.id})
 
 MAX_SIZE = settings.rag_max_file_size_mb * 1024 * 1024
 

@@ -196,9 +196,15 @@ def test_mcp_http_preserves_tools_and_authenticated_evidence(source):
         names = {tool['name'] for tool in listed}
         assert {'list_knowledge_bases', 'search_knowledge', 'rag_query',
                 'pageindex_list_documents', 'pageindex_get_structure',
-                'pageindex_read_pages', 'pageindex_verify_citations'} <= names
+                'pageindex_read_pages', 'pageindex_verify_citations', 'get_kb_details',
+                'get_document_chunks', 'list_documents', 'knowledge_discover',
+                'spreadsheet_get_structure', 'spreadsheet_read_cells', 'spreadsheet_verify_citations'} <= names
         result = message(client, 'tools/call', {'name': 'pageindex_read_pages',
             'arguments': arguments(record) | {'pages': [1]}})['result']
+        invalid = message(client, 'tools/call', {'name': 'spreadsheet_get_structure',
+            'arguments': {'document_id': 'not-a-uuid', 'version': record['version']}})
+        assert invalid['error']['code'] == -32602
+        assert 'validation_errors' in invalid['error']['data']
         assert not result.get('isError'), result
         assert json.loads(result['content'][0]['text'])['reading']['complete']
         assert client.post('/mcp', json={}).status_code == 401

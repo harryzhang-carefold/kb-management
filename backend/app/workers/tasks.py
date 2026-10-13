@@ -72,8 +72,8 @@ def parse_document_task(self, document_id: str, task_id: str):
             text, meta = _parse(data, doc.filename, doc.file_type)
 
         # 存全文 + 元数据（v2：保留 index_type，解析 meta 不覆盖）
-        new_meta = dict(meta or {})
         old_meta = dict(doc.meta or {})
+        new_meta = old_meta | dict(meta or {})
         new_meta["index_type"] = old_meta.get("index_type", "embedding")
         _update_doc(db, document_id, status="parsed", full_text=text, meta=new_meta)
         _update_task(db, task_id, status="success",
@@ -82,6 +82,16 @@ def parse_document_task(self, document_id: str, task_id: str):
 
         # 链式触发下一阶段
         chunk_index_task.delay(document_id, task_id)
+        if doc.file_type == 'xlsx':
+            try:
+                build_spreadsheet_evidence_task.delay(document_id)
+            except Exception as native_error:
+                # A new additive job must not fail the existing text parse/index chain.
+                logger.warning(f'[spreadsheet] queue unavailable doc={document_id}: {native_error}')
+                current = db.query(Document).filter_by(id=document_id).with_for_update().populate_existing().first()
+                if current is not None:
+                    current.meta = dict(current.meta or {}) | {'spreadsheet_status': 'failed'}
+                    db.commit()
         logger.info(f"[parse] done doc={document_id} chars={len(text)}")
 
     except Exception as e:
@@ -100,6 +110,27 @@ def parse_document_task(self, document_id: str, task_id: str):
         raise
     finally:
         db.close()
+
+
+@celery_app.task(base=KBTask, bind=True, name='kb.build_spreadsheet_evidence', queue='kb')
+def build_spreadsheet_evidence_task(self, document_id: str):
+    """An additive native snapshot; failures never replace existing text/index evidence."""
+    from app.knowledge.spreadsheet_service import publish
+    with SessionLocal() as db:
+        doc = db.query(Document).filter_by(id=document_id, is_deleted=False).with_for_update().first()
+        if doc is None or doc.file_type != 'xlsx':
+            return
+        try:
+            publish(doc, db)
+            doc.meta = dict(doc.meta or {}) | {'spreadsheet_status': 'ready'}
+            db.commit()
+        except Exception:
+            db.rollback()
+            doc = db.query(Document).filter_by(id=document_id, is_deleted=False).with_for_update().first()
+            if doc is not None:
+                doc.meta = dict(doc.meta or {}) | {'spreadsheet_status': 'failed'}
+                db.commit()
+            raise
 
 
 @celery_app.task(base=KBTask, bind=True, name="kb.chunk_and_index", queue="kb")

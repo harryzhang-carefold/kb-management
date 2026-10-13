@@ -17,6 +17,9 @@ def document(document_id):
             with store.database() as records:
                 records.execute("DELETE FROM pageindex_record WHERE (kind='document' AND key=?) OR (kind='document_version' AND key LIKE ?)", (ident, ident + ':%'))
                 records.execute('DELETE FROM evidence_receipts WHERE document=?', (ident,))
+        with store.database() as records:
+            records.execute("DELETE FROM pageindex_record WHERE kind='spreadsheet_version' AND key LIKE ?", (str(doc.id) + ':%',))
+            records.execute('DELETE FROM evidence_receipts WHERE document=?', (str(doc.id),))
         minio_client.remove_object(doc.minio_key)
         db.query(Chunk).filter_by(document_id=doc.id).delete(synchronize_session=False)
         doc.full_text = None
