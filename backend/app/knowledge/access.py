@@ -75,6 +75,7 @@ class KBKnowledgeService(KnowledgeService):
             raise ValueError('Knowledge MCP requires an independent service credential')
         self.signing_secret = settings.carefold_scope_signing_secret
         self.organization_id = settings.kb_mcp_organization_id
+        self.document_read_methods = {}
 
     def policy(self):
         headers = request_headers.get()
@@ -100,11 +101,16 @@ class KBKnowledgeService(KnowledgeService):
             # Read only control metadata after checking the actual account permissions.
             documents = query.with_entities(Document.id, Document.kb_id, Document.meta).all()
             identifiers, sources = [], []
+            self.document_read_methods = {}
             for ident, kb_id, metadata in documents:
                 evidence = (metadata or {}).get('pageindex_evidence')
                 if evidence:
                     identifiers.append(evidence['document_id'])
                     sources.append(f'kb:{kb_id}:document:{ident}')
+                    cells = (metadata or {}).get('spreadsheet_evidence')
+                    self.document_read_methods[evidence['document_id']] = {
+                        'evidence': {'parsed_text': evidence, 'native_cells': cells},
+                        'read_methods': ['pageindex_read_pages'] + (['spreadsheet_read_cells'] if cells else [])}
         return {'organization_id': self.organization_id,
                 'agent_definition_ids': settings.kb_mcp_agent_definition_ids,
                 'source_ids': sources, 'document_ids': identifiers}
@@ -119,10 +125,10 @@ class KBKnowledgeService(KnowledgeService):
             raise PermissionError('Knowledge Source unavailable or not authorized')
         return super().document(ident, version, scope, policy)
 
-    @staticmethod
-    def metadata(doc):
+    def metadata(self, doc):
         from app.core.security import create_view_token
         metadata = KnowledgeService.metadata(doc)
+        metadata.update(self.document_read_methods.get(doc['id'], {}))
         source = doc['source_metadata']
         if source.get('kb_document_id') and source.get('kb_id'):
             import base64

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-21
+
+- Build all eight evidence-tool MCP argument contracts from the existing Authority models. Expose UUID/hash identities, read bounds, pagination limits and citation/filter limits before execution, without changing read authorization or continuation scope.
+- Include each source's current parsed-text and native-cell document/version references in authorized PageIndex metadata. Read methods use their own exact reference pair; native queries prefer typed AND filters over complete matching rows while explicit range reads remain available.
+- Add MCP 2.x schema and source-reference regressions; preserve existing native XLSX parsing and evidence tests.
+
 ## 2026-10-13
 
 - Support explicitly configured required equality-filter columns for native XLSX record queries. Expose the contract in discovered structure; reject incomplete selectors as MCP invalid_input with safe missing-column IDs. Keep unconfigured tables and raw range reading compatible; test real MCP HTTP rejection, typed AND reads and citations.
