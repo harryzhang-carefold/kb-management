@@ -13,3 +13,5 @@ Do not replace existing APIs or use uncommitted server files as versioned releas
 XLSX text discovery uses PageIndex by default. Its input preserves worksheet, explicit table region, repeated headers, complete rows and real coordinates in bounded batches; only an oversized row becomes explicitly incomplete fragments. Business rules use discovered typed columns and conjunctive filters over full records; citations use original cells. Cross-row business relationships require explicit source structure/configuration.
 
 Editors can explicitly declare required_filter_columns for a table's record queries. Structure exposes the actual column IDs; every declared column requires an equality condition. Incomplete selectors fail as invalid_input before records are read. This contract is not inferred from data, field names or customer phrases. Unconfigured tables keep existing filtering and all sources retain explicit raw range reading.
+
+Local Git publication follows [Git push instructions](docs/git-push.md). The approved KB branch uses the existing deployment credential through scripts/push_upstream.py; credentials remain outside repository files and logs.

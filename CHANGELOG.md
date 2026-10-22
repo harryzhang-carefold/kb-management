@@ -1,10 +1,14 @@
 # Changelog
 
+## 2026-10-22
+
+- Document the existing deployment GitHub credential source and add a local push entry for origin/feat/pageindex. Read the authorized credential through SSH in memory, use a temporary askpass reference, and preserve local/global Git credential configuration.
+
 ## 2026-10-21
 
 - Build all eight evidence-tool MCP argument contracts from the existing Authority models. Expose UUID/hash identities, read bounds, pagination limits and citation/filter limits before execution, without changing read authorization or continuation scope.
 - Include each source's current parsed-text and native-cell document/version references in authorized PageIndex metadata. Read methods use their own exact reference pair; native queries prefer typed AND filters over complete matching rows while explicit range reads remain available.
-- Add MCP 2.x schema and source-reference regressions; preserve existing native XLSX parsing and evidence tests.
+- Add MCP argument-schema and source-reference regressions; preserve existing native XLSX parsing and evidence tests.
 
 ## 2026-10-13
 
