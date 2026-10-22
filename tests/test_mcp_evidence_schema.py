@@ -47,3 +47,21 @@ def test_text_metadata_preserves_distinct_native_reference_pair(monkeypatch):
         assert metadata['read_methods'] == ['pageindex_read_pages', 'spreadsheet_read_cells']
     finally:
         request_headers.reset(token)
+
+
+def test_invalid_cell_filter_returns_actionable_selector_constraint():
+    import pytest
+    from types import SimpleNamespace
+    from mcp.shared.exceptions import MCPError
+    from app.knowledge.mcp_tools import invoke
+    from app.knowledge import spreadsheet
+    service = SimpleNamespace(call=lambda *args: spreadsheet.select(
+        {'sheets': [{'id': 'sheet'}]}, 'sheet', cell_range='A1:C4',
+        filters=[{'column_id': 'B', 'operator': 'eq', 'value': 'private-value'}]))
+    with pytest.raises(MCPError) as error:
+        invoke(service, 'spreadsheet_read_cells', {}, {})
+    assert error.value.error.code == -32602
+    diagnostic = error.value.error.data['validation_errors'][0]
+    assert diagnostic['loc'] == ['filters']
+    assert 'table_id' in diagnostic['msg'] and 'spreadsheet_get_structure' in diagnostic['msg']
+    assert 'private-value' not in str(error.value.error.data)

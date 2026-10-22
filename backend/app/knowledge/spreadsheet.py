@@ -11,6 +11,13 @@ from openpyxl.utils.cell import range_boundaries, get_column_letter
 PARSER_VERSION = f'xlsx-cells-1:openpyxl-{openpyxl.__version__}'
 
 
+class CellSelectorError(ValueError):
+    """An invalid selector shape with a safe, actionable field constraint."""
+    def __init__(self, field, message):
+        super().__init__(message)
+        self.field = field
+
+
 class RecordSelectorError(ValueError):
     """A query omitted explicitly configured record-key equality conditions."""
     def __init__(self, required_columns, missing_columns):
@@ -127,9 +134,9 @@ def select(record, sheet_id, cell_range=None, table_id=None, filters=None, *, ro
     if sheet is None:
         raise ValueError('Unknown worksheet ID')
     if bool(cell_range) == bool(table_id):
-        raise ValueError('Specify exactly one range or table_id')
+        raise CellSelectorError('cell_range', 'Specify exactly one cell_range or discovered table_id')
     if cell_range and filters:
-        raise ValueError('Filters require a discovered table')
+        raise CellSelectorError('filters', 'Filters require table_id from spreadsheet_get_structure, without cell_range; preserve the intended filters when correcting the selector')
     if table_id:
         table = next((item for item in sheet['tables'] if item['id'] == table_id), None)
         if table is None:

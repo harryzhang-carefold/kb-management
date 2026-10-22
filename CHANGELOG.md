@@ -2,6 +2,9 @@
 
 ## 2026-10-22
 
+- Normalize each logical source page once when building its passage catalogue. Preserve passage IDs and duplicate grouping; avoid repeating whole-document Unicode/whitespace processing for every sentence during reads and citation checks.
+- Preserve safe spreadsheet selector constraints in MCP invalid_input diagnostics, so range/filter mistakes can be corrected to a discovered table without dropping the requested filters.
+
 - Document the existing deployment GitHub credential source and add a local push entry for origin/feat/pageindex. Read the authorized credential through SSH in memory, use a temporary askpass reference, and preserve local/global Git credential configuration.
 
 ## 2026-10-21

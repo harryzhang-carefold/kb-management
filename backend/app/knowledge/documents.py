@@ -28,9 +28,11 @@ def norm(text):
 
 def passage_catalog(page, text):
     chunks, pending = [], ''
+    normalized_source = norm(text)
     for piece in re.split(r'(?<=[.!?。！？])\s+', text):
         pending = (pending + ' ' + piece).strip()
-        if len(norm(pending)) >= 8 and norm(text).count(norm(pending)) == 1:
+        normalized_pending = norm(pending)
+        if len(normalized_pending) >= 8 and normalized_source.count(normalized_pending) == 1:
             chunks.append(pending)
             pending = ''
     if pending:
