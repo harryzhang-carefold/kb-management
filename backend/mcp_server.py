@@ -242,22 +242,36 @@ def _auto_search(kb_ids: list[str], query: str, top_k: int) -> tuple[list[dict],
     """`mode=auto`（智能）：按各 KB 索引构成路由 —— **复用 `run_auto`**。
 
     - 单 KB：命中集合与顺序 == 站内同参 `mode=auto`（同一执行体，不做二次排序）；
-    - 跨库（MCP 未传 kb_id/name 时）：逐 KB 执行后按 score 降序合并、截断 top_k
-      （与既有跨库 hybrid 合并口径一致）。
+    - 跨库（MCP 未传 kb_id/name 时）：对已授权 KB 有界并行，按原源顺序收集后
+      按 score 降序合并、截断 top_k（与既有跨库 hybrid 合并口径一致）。
     - 返回 `(hits, meta)`；`meta` 含 route / degraded / message（F6 文案，透出给调用方，
       避免"静默 0 命中"）。
     """
     from app.services.auto_retrieval import run_auto
 
-    db = SessionLocal()
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+
+    def retrieve_one(kid):
+        # Sessions are thread-confined. This is the same already-authorized
+        # source set and the same retrieval engine, not semantic routing.
+        db = SessionLocal()
+        try:
+            return run_auto(db, kid, query, top_k, es_top_k=top_k)
+        finally:
+            db.close()
+
     hits_all: list[dict] = []
     routes: dict[str, str] = {}
     messages: list[str] = []
     degraded: list[str] = []
-    try:
-        for kid in kb_ids:
+    with ThreadPoolExecutor(max_workers=min(3, max(1, len(kb_ids)))) as pool:
+        jobs = [pool.submit(copy_context().run, retrieve_one, kid) for kid in kb_ids]
+        # Consume in source order so ties, messages and partial failures retain
+        # the previous serial behavior even when I/O finishes out of order.
+        for kid, job in zip(kb_ids, jobs):
             try:
-                res = run_auto(db, kid, query, top_k, es_top_k=top_k)
+                res = job.result()
             except Exception as e:  # noqa: BLE001 —— 单库失败不终止其余 KB
                 logger.error(f"auto search failed for kb {kid}: {e}")
                 continue
@@ -266,8 +280,6 @@ def _auto_search(kb_ids: list[str], query: str, top_k: int) -> tuple[list[dict],
                 messages.append(str(res["message"]))
             degraded.extend(res.get("degraded") or [])
             hits_all.extend(res.get("hits") or [])
-    finally:
-        db.close()
 
     hits_all.sort(key=lambda h: h.get("score", 0.0), reverse=True)
     if len(kb_ids) == 1:
@@ -293,15 +305,24 @@ def _pageindex_search(kb_ids: list[str], query: str, top_k: int
     """
     from app.services.pageindex_engine import retrieve as pageindex_retrieve
 
-    db = SessionLocal()
+    from concurrent.futures import ThreadPoolExecutor
+    from contextvars import copy_context
+
+    def retrieve_one(kid):
+        db = SessionLocal()
+        try:
+            return pageindex_retrieve(kid, query, top_k, db=db)
+        finally:
+            db.close()
+
     hits_all: list[dict] = []
     messages: list[str] = []
     errors: list[str] = []
-    try:
-        for kid in kb_ids:
+    with ThreadPoolExecutor(max_workers=min(3, max(1, len(kb_ids)))) as pool:
+        jobs = [pool.submit(copy_context().run, retrieve_one, kid) for kid in kb_ids]
+        for kid, job in zip(kb_ids, jobs):
             try:
-                hits, _took_ms, extra = pageindex_retrieve(
-                    kid, query, top_k, db=db)
+                hits, _took_ms, extra = job.result()
             except Exception as e:  # noqa: BLE001
                 logger.error(f"PageIndex search failed for kb {kid}: {e}")
                 errors.append(f"{kid}: {e}")
@@ -312,8 +333,6 @@ def _pageindex_search(kb_ids: list[str], query: str, top_k: int
             if extra and extra.get("message"):
                 messages.append(str(extra["message"]))
             hits_all.extend(hits or [])
-    finally:
-        db.close()
 
     hits_all.sort(key=lambda h: h.get("score", 0.0), reverse=True)
     return hits_all[:top_k], messages, errors

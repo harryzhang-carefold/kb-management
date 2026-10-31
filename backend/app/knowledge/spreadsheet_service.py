@@ -213,7 +213,12 @@ class SpreadsheetService:
             result['reading'] |= {'sheet_id': args.sheet_id, 'cell_range': args.cell_range, 'table_id': args.table_id}
             return {key: value for key, value in result.items() if key != 'pages'} | {
                 'evidence': [entry for page in result['pages'] for entry in page['passages']]}
-        citations = []
+        # Validate every exact source/receipt on the request thread before
+        # starting any remote semantic check. Only the independent LLM I/O is
+        # parallel, matching the existing PageIndex verifier's bounded policy.
+        from concurrent.futures import ThreadPoolExecutor
+        from contextvars import copy_context
+        prepared = []
         for citation in args.citations:
             sheet, entries = spreadsheet.select(record, citation.sheet_id, citation.cell_range)
             entry = next((item for item in entries if item['id'] == citation.evidence_id), None)
@@ -224,16 +229,26 @@ class SpreadsheetService:
             if not fully_read(rows, len(entry['text'])):
                 raise PermissionError('Citation requires complete cells read in this Invocation')
             if len(entry['text']) > 60000: raise ValueError('Select a smaller cell range for claim verification')
+            prepared.append((citation, entry))
+
+        def verify(prepared_item):
+            citation, entry = prepared_item
             from .models import support_check
-            # Text support only: no PDF image, synthetic page or coordinate checks.
-            support_record = {'ocr_pages': []}
+            # Each checker receives precisely the same claim and exact cells as
+            # before. Never infer support from location, completion or success.
             try:
-                check = support_check(support_record, 0, entry['text'], [], citation.claim)
+                check = support_check({'ocr_pages': []}, 0, entry['text'], [], citation.claim)
                 status, reason = ('checked' if check['supported'] else 'needs_review'), check['reason']
             except Exception:
                 status, reason = 'needs_review', 'Citation verifier unavailable or invalid response'
-            citations.append(metadata | {'locator': entry['locator'], 'passage_id': entry['id'],
+            return metadata | {'locator': entry['locator'], 'passage_id': entry['id'],
                 'claim': citation.claim, 'quote': entry['text'][:3000], 'quote_truncated': len(entry['text']) > 3000, 'invocation_id': scope['invocationId'],
-                'location_status': 'located', 'support_status': status, 'reason': reason})
+                'location_status': 'located', 'support_status': status, 'reason': reason}
+
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            jobs = [pool.submit(copy_context().run, verify, item) for item in prepared]
+            # Preserve requested order irrespective of completion order.
+            citations = [job.result() for job in jobs]
+        # Do not publish even checked claims after source changes or revocation.
         self.source(args.document_id, args.version, self.authorize(header, issued_at, signature)[1])
         return {'citations': citations}

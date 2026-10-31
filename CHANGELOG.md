@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-31
+
+- Remove serial I/O inside existing source operations without adding an Agent workflow: cross-KB `auto` and explicit `pageindex` searches run at most three independent authorized sources concurrently, each with its own database Session and copied request context. Keep the selected source set, query, engine, score ordering, tie order, top-k and partial-error behavior unchanged; explicit PageIndex still never falls back to vector search.
+- Native XLSX citation verification now validates all requested evidence IDs and complete current-Invocation receipts before remote model checks, then checks independent claims in a bounded three-worker pool as the existing PageIndex verifier already does. Preserve every claim check, result order and `needs_review` failure; recheck source version and access after all checks before publishing. No cross-user cache, source-data changes, schema change or new tool.
+- Add 11 isolated implementation tests for worker overlap, thread-confined Sessions, request-context propagation, ordering, failure isolation, complete-receipt preflight and final revocation. Run against previous source: 6 failures/5 passes; modified source: 11/11 passes. These are deterministic mechanism tests with fixture Authority/engines, not PostgreSQL integration or proof of real-model latency improvement. True authorized Provider comparison must follow the approved versioned deployment. Existing unrelated `tests/test_native_spreadsheet.py` work remains outside this change. See `docs/t09-independent-read-io-2026-10-31.md`.
+
 ## 2026-10-22
 
 - Normalize each logical source page once when building its passage catalogue. Preserve passage IDs and duplicate grouping; avoid repeating whole-document Unicode/whitespace processing for every sentence during reads and citation checks.
