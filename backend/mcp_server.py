@@ -270,6 +270,8 @@ def _auto_search(kb_ids: list[str], query: str, top_k: int) -> tuple[list[dict],
     # Use the same tree engine once for a small homogeneous authorized source
     # set, instead of queuing one remote model request per Knowledge Base.
     # An unavailable optimization preserves the original isolated source legs.
+    grouped = None
+    pending_kb_ids = kb_ids
     if len(kb_ids) > 1:
         try:
             from app.services.auto_retrieval import try_grouped_pageindex
@@ -279,8 +281,12 @@ def _auto_search(kb_ids: list[str], query: str, top_k: int) -> tuple[list[dict],
             finally:
                 db.close()
             if grouped is not None:
-                return grouped['hits'], {key: grouped[key] for key in ('route', 'degraded', 'message')}
+                pending_kb_ids = grouped.get('pending_kb_ids', [])
+                if not pending_kb_ids:
+                    return grouped['hits'], {key: grouped[key] for key in ('route', 'degraded', 'message')}
         except Exception as exc:
+            grouped = None
+            pending_kb_ids = kb_ids
             logger.error('Joint PageIndex retrieval unavailable; preserving individual sources: {}', type(exc).__name__)
 
     from concurrent.futures import ThreadPoolExecutor
@@ -295,15 +301,15 @@ def _auto_search(kb_ids: list[str], query: str, top_k: int) -> tuple[list[dict],
         finally:
             db.close()
 
-    hits_all: list[dict] = []
-    routes: dict[str, str] = {}
-    messages: list[str] = []
-    degraded: list[str] = []
-    with ThreadPoolExecutor(max_workers=min(3, max(1, len(kb_ids)))) as pool:
-        jobs = [pool.submit(copy_context().run, retrieve_one, kid) for kid in kb_ids]
-        # Consume in source order so ties, messages and partial failures retain
-        # the previous serial behavior even when I/O finishes out of order.
-        for kid, job in zip(kb_ids, jobs):
+    hits_all: list[dict] = list(grouped['hits']) if grouped else []
+    routes: dict[str, str] = {kid: 'pageindex' for kid in kb_ids if kid not in pending_kb_ids}
+    messages: list[str] = [grouped['message']] if grouped and grouped.get('message') else []
+    degraded: list[str] = list(grouped.get('degraded', [])) if grouped else []
+    with ThreadPoolExecutor(max_workers=min(3, max(1, len(pending_kb_ids)))) as pool:
+        jobs = [pool.submit(copy_context().run, retrieve_one, kid) for kid in pending_kb_ids]
+        # Mixed/embedding sources retain their original independent engine;
+        # already-grouped sources are not queried a second time.
+        for kid, job in zip(pending_kb_ids, jobs):
             try:
                 res = job.result()
             except Exception as e:  # noqa: BLE001 —— 单库失败不终止其余 KB

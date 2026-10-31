@@ -157,22 +157,26 @@ def try_grouped_pageindex(db, kb_ids: list[str], query: str, limit: int) -> Opti
     if len(ids) < 2:
         return None
     total = 0
+    grouped_ids, pending_ids = [], []
     for kid in ids:
         composition = kb_index_composition(db, kid)
         if composition['embedding_docs']:
-            return None
+            pending_ids.append(kid)
+            continue
+        grouped_ids.append(kid)
         total += composition['pageindex_docs']
         if total > MAX_OUTLINE_DOCS:
             return None
-    if not total:
+    if not total or len(grouped_ids) < 2:
         return None
-    hits, took_ms, extra = pageindex_retrieve(ids, query, limit, db=db, prefer_lexical=True)
+    hits, took_ms, extra = pageindex_retrieve(grouped_ids, query, limit, db=db, prefer_lexical=True)
     if (extra or {}).get('error') or (extra or {}).get('grouping_unavailable'):
         return None
     for hit in hits:
         hit['metadata'] = {**(hit.get('metadata') or {}), 'leg': LEG_PAGEINDEX}
     return {'hits': hits, 'took_ms': took_ms, 'route': 'multi', 'degraded': [],
-            'message': (extra or {}).get('message')}
+            'message': (extra or {}).get('message'),
+            **({'pending_kb_ids': pending_ids} if pending_ids else {})}
 
 
 def run_auto(db, kb_id: str, query: str, limit: int,

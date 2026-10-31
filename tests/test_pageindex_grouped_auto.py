@@ -57,6 +57,23 @@ def test_joint_failure_or_inventory_growth_does_not_turn_into_false_empty(monkey
     assert fn(object(), ['kb-a', 'kb-b'], 'unchanged', 5) is None
 
 
+def test_embedding_source_does_not_disable_grouping_of_other_pure_tree_sources(monkeypatch):
+    fn, _ = grouped_function({
+        'pure-a': {'embedding_docs': 0, 'pageindex_docs': 2},
+        'mixed-b': {'embedding_docs': 3, 'pageindex_docs': 1},
+        'pure-c': {'embedding_docs': 0, 'pageindex_docs': 1},
+    })
+    calls = []
+    def retrieve(ids, query, limit, **kwargs):
+        calls.append((ids, query))
+        return [{'document_id': 'tree-hit'}], 1, {}
+    monkeypatch.setattr(engine, 'retrieve', retrieve)
+    result = fn(object(), ['pure-a', 'mixed-b', 'pure-c'], 'unchanged', 5)
+    assert calls == [(['pure-a', 'pure-c'], 'unchanged')]
+    assert result['pending_kb_ids'] == ['mixed-b']
+    assert result['hits'] == [{'document_id': 'tree-hit', 'metadata': {'leg': 'pageindex'}}]
+
+
 def test_multi_source_engine_binds_only_the_supplied_ids(monkeypatch):
     constraints = []
     class Query:

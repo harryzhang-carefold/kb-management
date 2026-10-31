@@ -23,7 +23,9 @@ Rank specific matching ranges before encompassing parent ranges and deduplicate 
 
 ### Small homogeneous PageIndex scopes: one engine call, not one LLM per KB
 
-The MCP auto entry can call the same tree engine over the complete supplied authorized KB set. It does so only when the live inventory contains no embedding leg and fits the existing 50-document tree bound. Mixed indexes, larger scopes, failed joint retrieval and inventory growth fall back to the original bounded per-KB paths. The original query, source IDs, user request context and tool schema are unchanged. No cross-user cache, alternate executor, durable job or mandatory task workflow is introduced.
+The MCP auto entry calls the same tree engine over the bounded pure-PageIndex subset of the supplied authorized KB set. Remaining mixed/embedding KBs retain their original engines and are merged exactly once; no authorized KB is omitted. The grouped subset must fit the existing 50-document tree bound. Larger scopes, failed joint retrieval and inventory growth fall back to the original bounded per-KB paths.
+
+The initial all-or-nothing grouping in `b373818` was deployed with healthy API/worker/MCP. Natural N1/N2 measured **35.177s / 88.276s**, compared with **41.424s / 62.062s** before. Logs confirmed zero selection-model calls in the exact-code KB but separate semantic calls in other pure PageIndex KBs: an embedding KB had prevented joint optimization of the whole set. This was an incomplete optimization, not proof of overall improvement. The subset correction adds actual MCP merge/non-duplication tests (65 relevant tests total) and retains this slow sample. The original query, source IDs, user request context and tool schema are unchanged. No cross-user cache, alternate executor, durable job or mandatory task workflow is introduced.
 
 A multi-KB inventory that grows after composition is checked returns `grouping_unavailable` before truncating; no later KB is silently dropped. A model-written document prefix must resolve uniquely in the actual source set, never to the first ambiguous or empty-prefix match.
 

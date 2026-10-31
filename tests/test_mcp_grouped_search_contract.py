@@ -10,7 +10,7 @@ import pytest
 SOURCE = Path(__file__).resolve().parents[1] / 'backend/mcp_server.py'
 
 
-@pytest.mark.parametrize('joint_status', ['success', 'unavailable', 'error'])
+@pytest.mark.parametrize('joint_status', ['success', 'unavailable', 'error', 'subset'])
 def test_actual_mcp_joint_path_keeps_query_scope_and_fallback(monkeypatch, joint_status):
     node = next(n for n in ast.parse(SOURCE.read_text()).body if isinstance(n, ast.FunctionDef) and n.name == '_auto_search')
     sessions = []
@@ -25,16 +25,22 @@ def test_actual_mcp_joint_path_keeps_query_scope_and_fallback(monkeypatch, joint
         seen.append(('joint', tuple(ids), query, top_k))
         if joint_status == 'error': raise TimeoutError('fixture')
         if joint_status == 'unavailable': return None
-        return {'hits': [{'document_id': 'source-b', 'score': 1}], 'route': 'multi', 'degraded': [], 'message': None}
+        return {'hits': [{'document_id': 'source-b', 'score': 1}], 'route': 'multi', 'degraded': [], 'message': None,
+                **({'pending_kb_ids': ['source-c']} if joint_status == 'subset' else {})}
     def individual(db, kid, query, top_k, **kwargs):
         seen.append(('individual', kid, query, top_k))
         return {'hits': [{'document_id': kid, 'score': 0.5}], 'route': 'pageindex', 'degraded': [], 'message': None}
     module.try_grouped_pageindex = grouped
     module.run_auto = individual
     monkeypatch.setitem(sys.modules, module.__name__, module)
-    hits, meta = ns['_auto_search'](['source-a', 'source-b'], 'unmodified query', 3)
-    assert seen[0] == ('joint', ('source-a', 'source-b'), 'unmodified query', 3)
-    if joint_status == 'success':
+    ids = ['source-a', 'source-b', 'source-c'] if joint_status == 'subset' else ['source-a', 'source-b']
+    hits, meta = ns['_auto_search'](ids, 'unmodified query', 3)
+    assert seen[0] == ('joint', tuple(ids), 'unmodified query', 3)
+    if joint_status == 'subset':
+        assert seen[1:] == [('individual', 'source-c', 'unmodified query', 3)]
+        assert [hit['document_id'] for hit in hits] == ['source-b', 'source-c']
+        assert len(sessions) == 2
+    elif joint_status == 'success':
         assert len(seen) == 1 and len(sessions) == 1
         assert [h['document_id'] for h in hits] == ['source-b']
     else:
