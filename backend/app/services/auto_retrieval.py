@@ -4,13 +4,19 @@
 决策：`01-product/PRODUCT_DECISIONS.md` §PD-001
 
 红线（不改）：
-- `es_client.hybrid_search` 内部实现、`pageindex_engine` 内部实现；
-- 任何**显式** mode（hybrid/vector/keyword/pageindex）分支的行为；
+- `es_client.hybrid_search` 内部实现与原有索引/原始证据；
+- 任何**显式** mode（hybrid/vector/keyword/pageindex）分支的选择策略；
 - 显式 `mode=pageindex` 命中 0 不回退 ES（`api/search.py` 原样保留）。
 
+2026-10-31 T09：auto 的 PageIndex 腿复用同一个树引擎；原文摘录已有较强词面
+匹配时直接返回标明 lexical_candidate 的来源候选，弱匹配继续原语义选择。
+该候选不是 checked 结论；Agent 的当前权限、版本化原文读取和内容核验不变。
+小规模纯 PageIndex 跨库集合可一次联合选节点，混合/大集合保留原各腿。
+
 实现要点：
-- 单腿路由（仅 embedding / 仅 pageindex）**完全复用**对应显式模式的路径与分数，
-  不归一化、不改排序 → 与显式模式"等价"（F3）。
+- 单腿路由（仅 embedding / 仅 pageindex）不归一化、不做二次排序。
+  PageIndex auto 的候选评分可为 lexical_coverage，显式 PageIndex 仍为原语义选择；
+  score_source 明确区分检索评分，不将词面覆盖伪称语义支持。
 - 两腿都执行（混合库）时才做 F4 合并：各腿按自身最高分归一化 → 降序（同分
   pageindex 腿优先）→ 去重 → 截断。分数归一化**仅用于排序/展示**，
   两腿量纲不同（ES RRF ≈1/60 vs pageindex LLM relevance 0–1），不可当绝对阈值用。
@@ -77,7 +83,7 @@ def _pageindex_leg(kb_id: str, query: str, top_n: int,
     `extra['error']`，两者都视为"该腿异常"（F5）。"""
     from app.services.pageindex_engine import retrieve as pageindex_retrieve
     hits, took_ms, extra = pageindex_retrieve(
-        kb_id, query, top_n, filters=filters, db=db)
+        kb_id, query, top_n, filters=filters, db=db, prefer_lexical=True)
     err = (extra or {}).get("error")
     for h in hits:
         h["metadata"] = {**(h.get("metadata") or {}), "leg": LEG_PAGEINDEX}
@@ -115,7 +121,7 @@ def _merge_two_legs(legs: list[tuple[str, list[dict]]], limit: int) -> list[dict
 
 
 def _single_leg(hits: list[dict], limit: int) -> list[dict]:
-    """单腿 auto：分数保持该腿原值（**不归一化**），与对应显式模式等价（F3）。"""
+    """单腿 auto：保留该腿原分数和排序，不归一化或重新解释 score_source。"""
     out: list[dict] = []
     seen: set[tuple] = set()
     for h in hits:
@@ -137,6 +143,36 @@ def _route_of(embedding_docs: int, pageindex_docs: int) -> str:
     if pageindex_docs:
         return "pageindex"
     return "none"
+
+
+def try_grouped_pageindex(db, kb_ids: list[str], query: str, limit: int) -> Optional[dict]:
+    """One existing tree retrieval over a bounded already-authorized source set.
+
+    Mixed indexes and larger inventories keep the current independent legs.
+    No source is selected by a user phrase, no permission is cached, and a
+    failed joint request retains the existing per-source isolation fallback.
+    """
+    from app.services.pageindex_engine import retrieve as pageindex_retrieve, MAX_OUTLINE_DOCS
+    ids = list(dict.fromkeys(kb_ids))
+    if len(ids) < 2:
+        return None
+    total = 0
+    for kid in ids:
+        composition = kb_index_composition(db, kid)
+        if composition['embedding_docs']:
+            return None
+        total += composition['pageindex_docs']
+        if total > MAX_OUTLINE_DOCS:
+            return None
+    if not total:
+        return None
+    hits, took_ms, extra = pageindex_retrieve(ids, query, limit, db=db, prefer_lexical=True)
+    if (extra or {}).get('error') or (extra or {}).get('grouping_unavailable'):
+        return None
+    for hit in hits:
+        hit['metadata'] = {**(hit.get('metadata') or {}), 'leg': LEG_PAGEINDEX}
+    return {'hits': hits, 'took_ms': took_ms, 'route': 'multi', 'degraded': [],
+            'message': (extra or {}).get('message')}
 
 
 def run_auto(db, kb_id: str, query: str, limit: int,

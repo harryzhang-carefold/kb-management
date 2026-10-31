@@ -133,9 +133,19 @@ class LLMClient:
         base["response_format"] = {"type": "json_object"}
         try:
             resp = self.client.chat.completions.create(**base)  # type: ignore[arg-type]
-        except Exception as e:
-            # 端点不支持 response_format → 退化
-            logger.warning(f"json_mode unsupported ({e}); retrying without response_format")
+        except APIStatusError as error:
+            # Only a provider-declared unsupported format warrants this fallback.
+            # Timeout/auth/rate-limit/server errors must retain their real cause,
+            # not trigger an extra model request disguised as format recovery.
+            body = error.body if isinstance(error.body, dict) else {}
+            detail = body.get('error', body)
+            detail = detail if isinstance(detail, dict) else {}
+            unsupported_format = error.status_code == 400 and (
+                detail.get('param') in ('response_format', 'response_format.type') or
+                detail.get('code') == 'unsupported_response_format')
+            if not unsupported_format:
+                raise
+            logger.warning('Provider rejected response_format; retrying the same request without that parameter')
             base.pop("response_format", None)
             resp = self.client.chat.completions.create(**base)  # type: ignore[arg-type]
         return resp.choices[0].message.content or ""

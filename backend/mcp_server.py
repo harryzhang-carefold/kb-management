@@ -259,12 +259,29 @@ def _auto_search(kb_ids: list[str], query: str, top_k: int) -> tuple[list[dict],
     """`mode=auto`（智能）：按各 KB 索引构成路由 —— **复用 `run_auto`**。
 
     - 单 KB：命中集合与顺序 == 站内同参 `mode=auto`（同一执行体，不做二次排序）；
-    - 跨库（MCP 未传 kb_id/name 时）：对已授权 KB 有界并行，按原源顺序收集后
-      按 score 降序合并、截断 top_k（与既有跨库 hybrid 合并口径一致）。
+    - 跨库（MCP 未传 kb_id/name 时）：小规模纯 PageIndex 已授权来源集合由同一树引擎
+      一次联合检索；混合索引、大集合或联合失败仍按原有界并行路径收集与排序。
+      两条路径均不扩大来源权限，不把检索候选作为内容支持结论。
     - 返回 `(hits, meta)`；`meta` 含 route / degraded / message（F6 文案，透出给调用方，
       避免"静默 0 命中"）。
     """
     from app.services.auto_retrieval import run_auto
+
+    # Use the same tree engine once for a small homogeneous authorized source
+    # set, instead of queuing one remote model request per Knowledge Base.
+    # An unavailable optimization preserves the original isolated source legs.
+    if len(kb_ids) > 1:
+        try:
+            from app.services.auto_retrieval import try_grouped_pageindex
+            db = SessionLocal()
+            try:
+                grouped = try_grouped_pageindex(db, kb_ids, query, top_k)
+            finally:
+                db.close()
+            if grouped is not None:
+                return grouped['hits'], {key: grouped[key] for key in ('route', 'degraded', 'message')}
+        except Exception as exc:
+            logger.error('Joint PageIndex retrieval unavailable; preserving individual sources: {}', type(exc).__name__)
 
     from concurrent.futures import ThreadPoolExecutor
     from contextvars import copy_context

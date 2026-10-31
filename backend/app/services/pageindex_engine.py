@@ -481,6 +481,49 @@ def _lexical_rank(filtered: list[tuple[Document, dict]],
     return ranked, related
 
 
+def _strong_lexical_candidates(ranked: list[tuple], question: str, top_n: int) -> list[tuple]:
+    """Rank original-text candidates, not answers or proof of applicability.
+
+    Used only by auto retrieval. Require several literal query tokens in the
+    *returned* excerpt, including every numeric token. Weak signals, stale
+    offsets and semantic/synonym questions keep the existing LLM selector.
+    No business vocabulary, source identity or permission is inferred here.
+    """
+    query_tokens = _lex_tokens(question)
+    if len(query_tokens) < 3:
+        return []
+    # Preserve even single-digit qualifiers, which the general word tokenizer
+    # deliberately omits. This is literal candidate ranking, not numeric inference.
+    numeric_tokens = set(re.findall(r'\d+', question))
+    candidates = []
+    for _coverage, _matched, depth, document, tree, node in ranked:
+        start, end = int(node.get('start', 0)), int(node.get('end', 0))
+        source = document.full_text or ''
+        if tree.get('stale') or start < 0 or end <= start or end > len(source):
+            continue
+        excerpt = source[start:end][:MAX_CONTENT_CHARS]
+        excerpt_tokens = _lex_tokens(excerpt)
+        matches = query_tokens & excerpt_tokens
+        coverage = len(matches) / len(query_tokens)
+        if len(matches) < 3 or coverage < 0.75 or not numeric_tokens <= set(re.findall(r'\d+', excerpt)):
+            continue
+        candidates.append((coverage, len(matches), depth, document, tree, node))
+    # Specific original regions beat a broad parent with the same literal score.
+    candidates.sort(key=lambda x: (-x[0], -x[1], int(x[5]['end']) - int(x[5]['start']),
+                                   -x[2], str(x[3].id), str(x[5].get('node_id', ''))))
+    selected = []
+    for item in candidates:
+        _coverage, _matched, _depth, document, _tree, node = item
+        if any(str(previous[3].id) == str(document.id) and
+               int(node['start']) <= int(previous[5]['start']) and
+               int(node['end']) >= int(previous[5]['end']) for previous in selected):
+            continue
+        selected.append(item)
+        if len(selected) >= top_n:
+            break
+    return selected
+
+
 def _lexical_prefilter_candidates(filtered: list[tuple[Document, dict]],
                                   ranked: list[tuple]) -> list[tuple[Document, dict, dict]]:
     """在强词面信号下缩小 LLM 候选，但不替代最终语义选择。
@@ -762,8 +805,9 @@ def rebuild_tree_index(document: Document, db) -> dict:
 # 检索
 # ----------------------------------------------------------------------
 
-def retrieve(kb_id: str, question: str, top_n: int = 5,
-             filters: Optional[dict] = None, db=None) -> tuple[list[dict], int, Optional[dict]]:
+def retrieve(kb_id: str | list[str], question: str, top_n: int = 5,
+             filters: Optional[dict] = None, db=None, *,
+             prefer_lexical: bool = False) -> tuple[list[dict], int, Optional[dict]]:
     """KB 级 LLM 推理检索。
 
     返回 (results, took_ms, extra)。results 元素格式与设计 §4.2 一致：
@@ -781,8 +825,9 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
         # 1. 查 KB 下"按文档选择了 pageindex 索引"且已建树的文档；
         #    index_type / pageindex_status 存于 meta JSONB，Python 侧过滤
         #    （文档量小，无性能问题）。v2：按文档二选一，不再看 KB 级开关。
+        source_ids = [kb_id] if isinstance(kb_id, str) else list(dict.fromkeys(kb_id))
         docs = (db.query(Document)
-                .filter(Document.kb_id == kb_id, Document.is_deleted.is_(False),
+                .filter(Document.kb_id.in_(source_ids), Document.is_deleted.is_(False),
                         Document.full_text.isnot(None))
                 .order_by(Document.indexed_at.desc().nullslast())
                 .all())
@@ -812,6 +857,12 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
                 "（上传时需选择 PageIndex 索引方式），请更换检索方式或重新上传文档。")
             return [], int((time.time() - t0) * 1000), extra
 
+        # A combined auto query must not introduce a new cross-source cutoff.
+        # If the live source set outgrew its earlier inventory, let the existing
+        # per-source path handle it, rather than silently dropping a KB's docs.
+        if len(source_ids) > 1 and len(filtered) > MAX_OUTLINE_DOCS:
+            extra['grouping_unavailable'] = 'source_inventory_exceeds_joint_bound'
+            return [], int((time.time() - t0) * 1000), extra
         # R5：文档数 > 50 → 取最近 50 个
         if len(filtered) > MAX_OUTLINE_DOCS:
             filtered = filtered[:MAX_OUTLINE_DOCS]
@@ -823,6 +874,21 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
         for d, tree in filtered:
             doc_index[str(d.id)] = (d, tree)
         lex_ranked, lex_related = _lexical_rank(filtered, question)
+        if prefer_lexical:
+            direct = _strong_lexical_candidates(lex_ranked, question, top_n)
+            if direct:
+                # These are located search candidates only. Authority-owned
+                # versioned reading and content-support checks remain mandatory
+                # before the Agent can publish a source-grounded conclusion.
+                results = [_build_result(d, tree, node, coverage,
+                           selected_by='lexical_candidate', lex_coverage=round(coverage, 3),
+                           lex_matched=matched)
+                           for coverage, matched, _depth, d, tree, node in direct]
+                extra.update(candidate_mode='lexical_direct', candidate_nodes=len(direct),
+                             semantic_selection=False, attempts=0)
+                logger.info('[pageindex] lexical candidates kb_id={} docs={} hits={} model_calls=0',
+                            kb_id, len(filtered), len(results))
+                return results, int((time.time() - t0) * 1000), extra
         lexical_candidates = _lexical_prefilter_candidates(filtered, lex_ranked)
         all_node_count = sum(len(_walk_nodes(tree["root"])) for _d, tree in filtered)
 
@@ -874,12 +940,13 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
                 relevance = max(0.0, min(1.0, relevance))
                 hit = doc_index.get(doc_id)
                 if not hit:
-                    # doc_id 可能是短前缀（outline 里是 doc={8位}）
-                    for k in doc_index:
-                        if k.startswith(doc_id):
-                            hit = doc_index[k]
-                            doc_id = k
-                            break
+                    # The outline may use a short ID. It must resolve uniquely
+                    # within this exact source set; never choose the first KB's
+                    # document for an empty or ambiguous model-written prefix.
+                    matching = [key for key in doc_index if doc_id and key.startswith(doc_id)]
+                    if len(matching) == 1:
+                        doc_id = matching[0]
+                        hit = doc_index[doc_id]
                 if not hit:
                     bad.append({"doc_id": doc_id, "node_id": node_id, "reason": "doc_id_unknown"})
                     continue
@@ -1007,7 +1074,8 @@ def _build_result(doc: Document, tree: dict, node: dict, relevance: float,
                   lex_matched: Optional[int] = None) -> dict:
     """把选中节点转成 sources 兼容结果（设计 §4.2）。
 
-    selected_by: "llm"（LLM 语义判定命中）/ "lexical_fallback"（LLM 判空后的词面降级命中）。
+    selected_by: "llm"（语义选择）/ "lexical_fallback"（语义空结果后的词面降级）/
+    "lexical_candidate"（auto 的直接原文词面候选，不表示内容支持已核验）。
     注意：retrieve 内已持有 db；此函数通过全局 SessionLocal 查 chunk 锚点
     （独立短会话，避免跨会话访问 ORM 对象）。
     """
@@ -1021,7 +1089,8 @@ def _build_result(doc: Document, tree: dict, node: dict, relevance: float,
         "char_start": start,
         "char_end": end,
         "truncated": False,
-        "score_source": "llm_relevance" if selected_by == "llm" else "lexical_fallback",
+        "score_source": ("llm_relevance" if selected_by == "llm" else
+                         "lexical_coverage" if selected_by == "lexical_candidate" else "lexical_fallback"),
         "selected_by": selected_by,
     }
     if lex_coverage is not None:
