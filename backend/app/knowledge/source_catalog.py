@@ -31,6 +31,11 @@ def encode_search_payload(payload, max_chars=64000):
     """
     result = dict(payload)
     result['documents'] = list(payload.get('documents', []))
+    # Explicitly distinguish a complete catalog for the returned search hits
+    # from a catalog truncated by the bounded response. This never claims the
+    # entire Knowledge Base was enumerated.
+    result['source_catalog_scope'] = 'returned_hits'
+    result['source_catalog_complete'] = True
     encoded = json.dumps(result, ensure_ascii=False, indent=2)
     while result['documents'] and len(encoded.encode('utf-16-le')) // 2 > max_chars:
         result['documents'].pop()

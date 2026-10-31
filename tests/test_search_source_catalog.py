@@ -132,9 +132,24 @@ def test_optional_catalog_respects_the_existing_bound_without_changing_search_hi
     from app.knowledge.source_catalog import encode_search_payload
     payload = {'items': [{'content': 'requested snippet'}], 'total': 1,
                'documents': [{'title': 'x'*300}, {'title': 'y'*300}]}
+    complete = json.loads(encode_search_payload(payload, max_chars=5000))
+    assert complete['source_catalog_scope'] == 'returned_hits'
+    assert complete['source_catalog_complete'] is True
+    assert complete['documents'] == payload['documents']
     result = json.loads(encode_search_payload(payload, max_chars=500))
     assert result['items'] == payload['items']
     assert result['total'] == 1
+    assert result['source_catalog_scope'] == 'returned_hits'
     assert result['source_catalog_complete'] is False
     assert len(result['documents']) < 2
     assert len(payload['documents']) == 2
+
+
+def test_search_description_explains_hit_catalog_reuse_without_claiming_full_kb_listing():
+    tree = ast.parse((ROOT / 'backend/mcp_server.py').read_text())
+    search = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'search_knowledge')
+    doc = ast.get_docstring(search) or ''
+    assert 'source_catalog_scope=returned_hits' in doc
+    assert 'source_catalog_complete=true' in doc
+    assert '不代表整个知识库目录' in doc
+    assert '不要仅为重新取得这些相同命中身份' in doc

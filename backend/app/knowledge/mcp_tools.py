@@ -95,7 +95,7 @@ def register(mcp):
             'sheet_id': sheet_id, 'cell_range': cell_range, 'table_id': table_id,
             'filters': [item.model_dump() for item in filters or []], 'cursor': cursor, 'max_chars': max_chars})
 
-    @evidence_tool(CELL_OPERATIONS['spreadsheet_verify_citations'], 'Verify up to three claims against exact original XLSX cell ranges completely delivered in this Invocation. Location and content support are separate; never invent coordinates.')
+    @evidence_tool(CELL_OPERATIONS['spreadsheet_verify_citations'], 'Verify up to three concise user-facing claims against exact original XLSX cell ranges completely delivered in this Invocation. Phrase each claim so Runtime can display it directly with its source after checked; do not put unsupported explanation into the claim. Location and content support are separate; never invent coordinates.')
     def spreadsheet_verify_citations(document_id: str, version: str, citations: list[CellCitation]) -> str:
         return cells_call('spreadsheet_verify_citations', {'document_id': document_id, 'version': version,
             'citations': [item.model_dump() for item in citations]})

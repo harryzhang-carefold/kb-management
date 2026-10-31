@@ -516,8 +516,13 @@ def search_knowledge(
 
     返回: 命中的文档片段列表（items），含 filename、chunk_index、content、score、
           match_type、doc_url（可点击深链）、location（pageindex 为 {type:node,value:node_id}，
-          否则 {type:chunk,value:chunk_index}）；auto/pageindex 另含 route/degraded/message，
-          0 命中或降级时 message 给出原因，不静默返回空。
+          否则 {type:chunk,value:chunk_index}）；documents 是这些命中所对应的当前授权
+          source_id/document_id/version/read_methods，供后续原生读取直接使用。
+          source_catalog_scope=returned_hits 且 source_catalog_complete=true 表示本次命中的
+          来源身份全部附带，不代表整个知识库目录；不要仅为重新取得这些相同命中身份
+          再调用目录发现。只有目标不在命中来源、目录明确部分缺失/过期，或用户要求完整
+          目录时才扩大发现。auto/pageindex 另含 route/degraded/message，0 命中或降级时
+          message 给出原因，不静默返回空。
     """
     # 解析知识库
     target_kb_ids: list[str] = []
