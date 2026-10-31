@@ -235,12 +235,19 @@ class SpreadsheetService:
             # before. Never infer support from location, completion or success.
             try:
                 check = support_check({'ocr_pages': []}, 0, entry['text'], [], citation.claim)
-                status, reason = ('checked' if check['supported'] else 'needs_review'), check['reason']
+                status, reason_code, reason = (
+                    'checked' if check['supported'] else 'needs_review',
+                    check.get('reason_code',
+                        'checked' if check['supported'] else 'claim_not_supported'),
+                    check['reason'])
             except Exception:
-                status, reason = 'needs_review', 'Citation verifier unavailable or invalid response'
+                status, reason_code, reason = (
+                    'needs_review', 'verifier_unavailable',
+                    'Citation verifier unavailable or invalid response')
             return metadata | {'locator': entry['locator'], 'passage_id': entry['id'],
                 'claim': citation.claim, 'quote': entry['text'][:3000], 'quote_truncated': len(entry['text']) > 3000, 'invocation_id': scope['invocationId'],
-                'location_status': 'located', 'support_status': status, 'reason': reason}
+                'location_status': 'located', 'support_status': status,
+                'reason_code': reason_code, 'reason': reason}
 
         with ThreadPoolExecutor(max_workers=3) as pool:
             jobs = [pool.submit(copy_context().run, verify, item) for item in prepared]

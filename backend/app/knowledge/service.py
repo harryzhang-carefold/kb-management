@@ -172,11 +172,16 @@ class KnowledgeService:
             item = self.metadata(doc) | {'page': c.page, 'printed_label': doc['labels'][c.page-1], 'passage_id': c.passage_id,
                     'quote': quote, 'boxes': boxes, 'claim': c.claim, 'location_status': 'located' if boxes or text_location else 'needs_review',
                     'support_status': 'unchecked', 'invocation_id': scope['invocationId']}
-            if not boxes and not text_location: return item | {'reason': 'No unique exact passage position'}
+            if not boxes and not text_location:
+                return item | {'reason_code': 'location_not_unique', 'reason': 'No unique exact passage position'}
             try: check = support_check(doc, c.page, quote, boxes, c.claim)
             except Exception:
-                return item | {'support_status': 'needs_review', 'reason': 'Citation verifier unavailable or invalid response'}
-            return item | {'support_status': 'checked' if check['supported'] else 'needs_review', 'reason': check['reason']}
+                return item | {'support_status': 'needs_review', 'reason_code': 'verifier_unavailable',
+                               'reason': 'Citation verifier unavailable or invalid response'}
+            return item | {'support_status': 'checked' if check['supported'] else 'needs_review',
+                           'reason_code': check.get('reason_code',
+                               'checked' if check['supported'] else 'claim_not_supported'),
+                           'reason': check['reason']}
         # Download once before parallel verification; propagate request authority
         # and the temporary workspace to each verifier thread.
         documents.paths(doc)

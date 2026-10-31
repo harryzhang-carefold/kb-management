@@ -30,7 +30,8 @@ def support_check(doc, page, quote, boxes, claim):
     content = [{'type': 'text', 'text': 'Claim: ' + claim + '\nExact source passage: ' + quote}]
     if page in doc['ocr_pages']:
         if not settings.pageindex_vision_enabled:
-            return {'supported': False, 'reason': 'OCR requires a configured vision verifier'}
+            return {'supported': False, 'reason_code': 'verifier_unavailable',
+                    'reason': 'OCR requires a configured vision verifier'}
         original, _ = paths(doc)
         with pymupdf.open(original) as pdf:
             pg = pdf[page - 1]
@@ -49,7 +50,8 @@ def support_check(doc, page, quote, boxes, claim):
         for budget in CHECK_TOKEN_BUDGETS:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return {'supported': False, 'reason': 'Citation verifier time budget exhausted; content support not checked'}
+                return {'supported': False, 'reason_code': 'verifier_timeout',
+                        'reason': 'Citation verifier time budget exhausted; content support not checked'}
             result = client.post(config['base_url'] + '/chat/completions', headers={'Authorization': 'Bearer ' + config['api_key']},
                                  json=request | {'max_tokens': budget}, timeout=remaining)
             result.raise_for_status()
@@ -57,10 +59,16 @@ def support_check(doc, page, quote, boxes, claim):
             # Even parseable partial JSON cannot establish content support.
             if choice.get('finish_reason') == 'length':
                 if budget == CHECK_TOKEN_BUDGETS[-1]:
-                    return {'supported': False, 'reason': f'Citation verifier output truncated at token budget {budget}; content support not checked'}
+                    return {'supported': False, 'reason_code': 'verifier_truncated',
+                            'reason': f'Citation verifier output truncated at token budget {budget}; content support not checked'}
                 continue
             value = json.loads(choice['message']['content'])
             break
     if type(value.get('supported')) is not bool or type(value.get('source_text_ok')) is not bool:
         raise ValueError('Invalid citation-check response')
-    return {'supported': value['supported'] and value['source_text_ok'], 'reason': str(value.get('reason', ''))[:500]}
+    supported = value['supported'] and value['source_text_ok']
+    reason_code = ('checked' if supported else
+                   'source_text_mismatch' if not value['source_text_ok'] else
+                   'claim_not_supported')
+    return {'supported': supported, 'reason_code': reason_code,
+            'reason': str(value.get('reason', ''))[:500]}
