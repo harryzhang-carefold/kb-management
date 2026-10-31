@@ -91,19 +91,22 @@ def _kb_to_dict(kb: KnowledgeBase, db, include_counts: bool = True) -> dict:
 
 
 def _docs_mapping(doc_ids: list) -> dict:
-    """批量查文档：doc_id → {kb_id, index_type, file_type}（citation 拼装用）。"""
+    """Resolve current, still-authorized document metadata once per result set."""
+    from app.knowledge.source_catalog import document_reference
+    allowed = accessible_kb_ids()
     db = SessionLocal()
     try:
         rows = (
             db.query(Document)
             .filter(Document.id.in_([uuid.UUID(d) for d in doc_ids]),
-                    Document.is_deleted.is_(False))
+                    Document.kb_id.in_(allowed), Document.is_deleted.is_(False))
             .all()
         )
         return {
             str(d.id): {"kb_id": str(d.kb_id),
                         "index_type": (d.meta or {}).get("index_type", "embedding"),
-                        "file_type": d.file_type}
+                        "file_type": d.file_type,
+                        "source_reference": document_reference(d)}
             for d in rows
         }
     finally:
@@ -166,7 +169,7 @@ def _order_items_for_truncation(items: list) -> list:
     return reordered
 
 
-def _attach_citations(kb_id: Optional[str], items: list) -> list:
+def _attach_citations(kb_id: Optional[str], items: list, *, source_documents: Optional[list] = None) -> list:
     """V2 §2.1 契约：为检索结果项补 doc_url + location（集中签发 view_token）。
 
     - doc_url = {KB_PUBLIC_BASE_URL}/kb/{doc_kb_id}/doc/{doc_id}?{定位参数}&token=<view_token>
@@ -191,6 +194,10 @@ def _attach_citations(kb_id: Optional[str], items: list) -> list:
         return items
 
     docs = _docs_mapping(doc_ids)
+    if source_documents is not None:
+        # A revoked/deleted document discovered by a slower search cannot be
+        # published using the earlier search hit or a fallback knowledge-base ID.
+        items = [item for item in items if item.get('document_id') in docs]
     base = (settings.kb_public_base_url or "").rstrip("/")
     token_cache: dict = {}
 
@@ -225,6 +232,16 @@ def _attach_citations(kb_id: Optional[str], items: list) -> list:
                 f"{base}/kb/{doc_kb}/doc/{did}?{loc_param}"
                 f"&token={_token((doc_kb, did))}"
             )
+    if source_documents is not None:
+        for did in doc_ids:
+            info = docs.get(did, {})
+            canonical = info.get('source_reference')
+            if not isinstance(canonical, dict):
+                continue
+            # Only actual authority metadata supplies reader identity/version.
+            # This is a document navigation link, not a checked passage claim.
+            source_documents.append(canonical | {'doc_url':
+                f"{base}/kb/{info['kb_id']}/doc/{did}?token={_token((info['kb_id'], did))}"})
     return items
 
 
@@ -614,7 +631,8 @@ def search_knowledge(
     # BUG-1：先截断 content 再 attach；attach 后再重排，让引用字段在前、content 在最后，
     # 保证 agent observation 截断时引用字段仍完整保留在预览里。
     items = _trim_items_content(items)
-    items = _attach_citations(None, items)
+    source_documents: list[dict] = []
+    items = _attach_citations(None, items, source_documents=source_documents)
     items = _order_items_for_truncation(items)
 
     payload: dict = {
@@ -623,6 +641,10 @@ def search_knowledge(
         "total": len(items),
         "took_ms": total_ms,
         "items": items,
+        # These references let the existing reader use the exact current source
+        # without repeating a whole catalog request. Snippets remain discovery,
+        # never complete reading or checked support.
+        "documents": source_documents,
     }
     if route is not None:
         # auto/pageindex：路由与降级状态可解释（none=库内无可检索文档）
@@ -632,7 +654,8 @@ def search_knowledge(
     if messages:
         # 0 命中 / 腿降级时的原因（F6 文案或引擎区分文案）——不静默返回空
         payload["message"] = " ".join(dict.fromkeys(messages))
-    return json.dumps(payload, ensure_ascii=False, indent=2)
+    from app.knowledge.source_catalog import encode_search_payload
+    return encode_search_payload(payload)
 
 
 # ---- 4. RAG 问答 ----

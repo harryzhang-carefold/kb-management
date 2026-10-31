@@ -146,13 +146,9 @@ class SpreadsheetService:
                     raise PermissionError('Knowledge Base unavailable or not authorized')
                 query = db.query(Document).filter(Document.kb_id == kb_id, Document.is_deleted.is_(False)).order_by(Document.id)
                 total = query.count(); items = []
+                from .source_catalog import document_reference
                 for doc in query.offset(args.offset).limit(args.limit):
-                    meta = doc.meta or {}; page = meta.get('pageindex_evidence'); cells = meta.get('spreadsheet_evidence')
-                    items.append({'document_id': str(doc.id), 'kb_document_id': str(doc.id), 'kb_id': str(doc.kb_id),
-                        'title': doc.filename, 'source_id': f'kb:{doc.kb_id}:document:{doc.id}', 'source_type': doc.file_type,
-                        'status': doc.status, 'version': (cells or page or {}).get('version'),
-                        'evidence': {'parsed_text': page, 'native_cells': cells},
-                        'read_methods': (['pageindex_read_pages'] if page else []) + (['spreadsheet_read_cells'] if cells else [])})
+                    items.append(document_reference(doc))
                 return self.catalog(items, total, args.offset, documents=items)
         # Existing source UUIDs have a different contract from hashed PDF IDs.
         record = self.source(args.document_id, args.version, allowed)
