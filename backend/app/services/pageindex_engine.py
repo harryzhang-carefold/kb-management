@@ -39,6 +39,9 @@ LEX_MIN_MATCHED = 2          # 词面降级判「相关」的最小命中问题�
 LEX_MIN_COVERAGE = 0.5       # 或问题词元覆盖率下限（短问题兜底：1/1=1.0）
 LEX_SCORE_CHARS = 8000       # 词面打分时单节点取用的正文字符上限
 LEX_MAX_SCORE = 0.30         # 词面降级命中分值上限（与 LLM 判定命中的典型区间区分）
+LEX_PREFILTER_MIN_MATCHED = 4  # 仅强词面信号才缩小 LLM 候选；最终语义选择仍由 LLM 完成
+LEX_PREFILTER_MIN_COVERAGE = 0.35
+LEX_PREFILTER_MAX_NODES = 64   # 加上各文档根节点后仍远低于原整树提示预算
 OUTLINE_BUDGET_CHARS = 24000  # outline 总字符预算（≈6k tokens）；超限则退回「标题+摘要」精简模式
 OUTLINE_EXCERPT_CHARS = 150   # outline 每节点附带的正文开头摘录长度（预算内才带）
 MAX_OUTLINE_DOCS = 50        # 单次检索参与推理的文档数上限（R5）
@@ -348,6 +351,21 @@ def _one_line(text: str, limit: int) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())[:limit]
 
 
+def _outline_node_line(doc_id: str, node: dict, full_text: str = "",
+                       excerpt_chars: int = 0) -> str:
+    """把一个已授权树节点渲染为检索 outline 行。"""
+    nid = node.get("node_id", "?")
+    title = (node.get("title") or "").strip().replace("\n", " ")
+    summary = (node.get("summary") or "").strip().replace("\n", " ")[:50]
+    s, e = node.get("start", 0), node.get("end", 0)
+    line = f"[{nid}] doc={doc_id[:8]} | {title} | {summary} | {s}-{e}"
+    if excerpt_chars:
+        excerpt = _one_line((full_text or "")[max(0, int(s)):max(0, int(e))], excerpt_chars)
+        if excerpt:
+            line += f" | 摘录: {excerpt}"
+    return line
+
+
 def _outline_lines(doc_id: str, root: dict, full_text: str = "",
                    excerpt_chars: int = 0) -> list[str]:
     """把树扁平成 outline 行（每节点一行；摘要截 50 字）。
@@ -360,18 +378,9 @@ def _outline_lines(doc_id: str, root: dict, full_text: str = "",
     lines: list[str] = []
 
     def walk(node: dict):
-        nid = node.get("node_id", "?")
-        title = (node.get("title") or "").strip().replace("\n", " ")
-        summary = (node.get("summary") or "").strip().replace("\n", " ")[:50]
-        s, e = node.get("start", 0), node.get("end", 0)
-        line = f"[{nid}] doc={doc_id[:8]} | {title} | {summary} | {s}-{e}"
-        if excerpt_chars:
-            excerpt = _one_line((full_text or "")[max(0, int(s)):max(0, int(e))], excerpt_chars)
-            if excerpt:
-                line += f" | 摘录: {excerpt}"
-        lines.append(line)
-        for c in node.get("children", []):
-            walk(c)
+        lines.append(_outline_node_line(doc_id, node, full_text, excerpt_chars))
+        for child in node.get("children", []):
+            walk(child)
 
     walk(root)
     return lines
@@ -470,6 +479,35 @@ def _lexical_rank(filtered: list[tuple[Document, dict]],
     related = bool(ranked) and (ranked[0][1] >= LEX_MIN_MATCHED
                                 or ranked[0][0] >= LEX_MIN_COVERAGE)
     return ranked, related
+
+
+def _lexical_prefilter_candidates(filtered: list[tuple[Document, dict]],
+                                  ranked: list[tuple]) -> list[tuple[Document, dict, dict]]:
+    """在强词面信号下缩小 LLM 候选，但不替代最终语义选择。
+
+    每个文档根节点始终保留，避免词面命中遗漏同义主题；其余候选按现有词面排序选择，
+    对同文档相同字符区间去重（层级树的父/子节点常覆盖同一段原文）。弱信号返回空，
+    调用方继续使用完整树目录。
+    """
+    if not ranked or ranked[0][1] < LEX_PREFILTER_MIN_MATCHED or \
+            ranked[0][0] < LEX_PREFILTER_MIN_COVERAGE:
+        return []
+    candidates: list[tuple[Document, dict, dict]] = []
+    seen: set[tuple[str, int, int]] = set()
+    for document, tree in filtered:
+        root = tree["root"]
+        key = (str(document.id), int(root.get("start", 0)), int(root.get("end", 0)))
+        seen.add(key)
+        candidates.append((document, tree, root))
+    for _coverage, _matched, _depth, document, tree, node in ranked:
+        key = (str(document.id), int(node.get("start", 0)), int(node.get("end", 0)))
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append((document, tree, node))
+        if len(candidates) >= len(filtered) + LEX_PREFILTER_MAX_NODES:
+            break
+    return candidates
 
 
 # ----------------------------------------------------------------------
@@ -779,17 +817,23 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
             filtered = filtered[:MAX_OUTLINE_DOCS]
             extra["docs_considered"] = MAX_OUTLINE_DOCS
 
-        # 2. 拼 outline（优先带正文摘录；超总预算则退回「标题+摘要」精简模式）
+        # 2. 拼 outline。强词面信号只缩小 LLM 候选，不替代最终语义选择；
+        #    弱信号仍使用完整目录。每个文档根节点始终保留，防止同义主题被词面漏掉。
         doc_index: dict[str, tuple[Document, dict]] = {}
         for d, tree in filtered:
             doc_index[str(d.id)] = (d, tree)
+        lex_ranked, lex_related = _lexical_rank(filtered, question)
+        lexical_candidates = _lexical_prefilter_candidates(filtered, lex_ranked)
+        all_node_count = sum(len(_walk_nodes(tree["root"])) for _d, tree in filtered)
 
         def _build_outline(with_excerpt: bool) -> list[str]:
+            excerpt_chars = OUTLINE_EXCERPT_CHARS if with_excerpt else 0
+            if lexical_candidates:
+                return [_outline_node_line(str(d.id), node, d.full_text or "", excerpt_chars)
+                        for d, _tree, node in lexical_candidates]
             lines: list[str] = []
             for d, tree in filtered:
-                lines.extend(_outline_lines(
-                    str(d.id), tree["root"], d.full_text or "",
-                    OUTLINE_EXCERPT_CHARS if with_excerpt else 0))
+                lines.extend(_outline_lines(str(d.id), tree["root"], d.full_text or "", excerpt_chars))
             return lines
 
         outline_lines = _build_outline(True)
@@ -799,6 +843,12 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
         else:
             extra["outline_mode"] = "with_excerpt"
         extra["outline_lines"] = len(outline_lines)
+        extra["outline_nodes_total"] = all_node_count
+        extra["candidate_mode"] = "lexical_prefilter" if lexical_candidates else "full_outline"
+        extra["candidate_nodes"] = len(lexical_candidates) if lexical_candidates else all_node_count
+        logger.info("[pageindex] candidate_mode={} kb_id={} docs={} nodes={}/{} outline_lines={}",
+                    extra["candidate_mode"], kb_id, len(filtered), extra["candidate_nodes"],
+                    all_node_count, len(outline_lines))
 
         # 3. LLM 联合推理选节点（不可解析/空判定 → 重试 → 词面降级 → 区分文案）
         #    背景（BUG-V4-01）：推理型模型对**同一** prompt 会非确定性地
@@ -855,8 +905,6 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
         results: list[dict] = []
         selected: list[dict] = []
         unresolved: list[dict] = []
-        lex_ranked: list[tuple] = []
-        lex_related = False
         llm_error: Optional[str] = None
         attempts_used = 0
         for attempt in range(1, attempts_cfg + 1):
@@ -888,9 +936,7 @@ def retrieve(kb_id: str, question: str, top_n: int = 5,
                                f"失败 kb={kb_id}: {exc}")
             if results:
                 break
-            # 无可用结果：先裁定词面相关性（每次检索只算一次）
-            if not lex_ranked:
-                lex_ranked, lex_related = _lexical_rank(filtered, question)
+            # 无可用结果：使用进入 LLM 前已计算的词面相关性裁定是否值得重试。
             if not lex_related:
                 # 问题与所有节点主题都无关 → 不再重试（保持既有 0 命中语义与 auto F6 文案）
                 break
