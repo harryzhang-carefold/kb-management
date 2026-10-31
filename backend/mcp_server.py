@@ -520,8 +520,10 @@ def search_knowledge(
           source_id/document_id/version/read_methods，供后续原生读取直接使用。
           source_catalog_scope=returned_hits 且 source_catalog_complete=true 表示本次命中的
           来源身份全部附带，不代表整个知识库目录；不要仅为重新取得这些相同命中身份
-          再调用目录发现。只有目标不在命中来源、目录明确部分缺失/过期，或用户要求完整
-          目录时才扩大发现。auto/pageindex 另含 route/degraded/message，0 命中或降级时
+          再调用目录发现。native XLSX 若包含 evidence.native_cells.structure 且 complete=true，
+          可直接使用其中受权、版本化的 sheet/table/column 选择器；只有结构缺失/部分、目标
+          不在命中来源，或用户要求未列出的原始范围时才调用 spreadsheet_get_structure 或
+          扩大发现。auto/pageindex 另含 route/degraded/message，0 命中或降级时
           message 给出原因，不静默返回空。
     """
     # 解析知识库

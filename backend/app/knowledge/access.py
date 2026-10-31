@@ -10,6 +10,7 @@ from app.core.database import SessionLocal
 from app.core.security import decode_token
 from app.models import User, KnowledgeBase, KbMember, Document
 from .service import KnowledgeService
+from .source_catalog import native_cells_reference
 
 request_headers = ContextVar('knowledge_request_headers', default={})
 
@@ -107,7 +108,7 @@ class KBKnowledgeService(KnowledgeService):
                 if evidence:
                     identifiers.append(evidence['document_id'])
                     sources.append(f'kb:{kb_id}:document:{ident}')
-                    cells = (metadata or {}).get('spreadsheet_evidence')
+                    cells = native_cells_reference(str(ident), metadata or {})
                     self.document_read_methods[evidence['document_id']] = {
                         'evidence': {'parsed_text': evidence, 'native_cells': cells},
                         'read_methods': ['pageindex_read_pages'] + (['spreadsheet_read_cells'] if cells else [])}

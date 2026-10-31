@@ -6,10 +6,30 @@ The caller owns authorization; original document rows supply every field.
 import json
 
 
+def native_cells_reference(document_id, metadata):
+    cells = (metadata or {}).get('spreadsheet_evidence')
+    if not cells:
+        return None
+    reference = dict(cells)
+    if reference.get('structure'):
+        return reference
+    try:
+        from . import spreadsheet, store
+        record = store.get('spreadsheet_version', f"{document_id}:{reference['version']}")
+        if record and record.get('version') == reference.get('version') and \
+                record.get('sha256') == reference.get('sha256'):
+            reference['structure'] = spreadsheet.structure_summary(record)
+    except Exception:
+        # Structure is optional optimization metadata. The existing versioned
+        # source reference remains authoritative and normal get_structure works.
+        pass
+    return reference
+
+
 def document_reference(doc):
     meta = doc.meta or {}
     page = meta.get('pageindex_evidence')
-    cells = meta.get('spreadsheet_evidence')
+    cells = native_cells_reference(str(doc.id), meta)
     return {
         'document_id': str(doc.id), 'kb_document_id': str(doc.id),
         'kb_id': str(doc.kb_id), 'title': doc.filename,

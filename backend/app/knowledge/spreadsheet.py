@@ -129,6 +129,55 @@ def parse(data, configured_tables=None):
         formulas.close(); cached.close()
 
 
+STRUCTURE_SUMMARY_MAX_SHEETS = 8
+STRUCTURE_SUMMARY_MAX_TABLES = 16
+STRUCTURE_SUMMARY_MAX_COLUMNS = 32
+
+
+def structure_summary(record):
+    """Return bounded, source-owned selectors without exposing cell values.
+
+    This metadata lets an authorized Agent use a current configured table
+    directly. It is not a read receipt, a business answer or permission to
+    inspect rows outside a later explicit selector.
+    """
+    all_sheets = record.get('sheets', [])
+    total_tables = sum(len(sheet.get('tables', [])) for sheet in all_sheets)
+    emitted_tables = 0
+    complete = True
+    sheets = []
+    for sheet in all_sheets:
+        tables = sheet.get('tables', [])
+        if not tables:
+            continue
+        if len(sheets) >= STRUCTURE_SUMMARY_MAX_SHEETS:
+            complete = False
+            break
+        published = []
+        for table in tables:
+            if emitted_tables >= STRUCTURE_SUMMARY_MAX_TABLES:
+                complete = False
+                break
+            columns = table.get('columns', [])
+            if len(columns) > STRUCTURE_SUMMARY_MAX_COLUMNS:
+                complete = False
+            published.append({key: table[key] for key in
+                ['id', 'range', 'header_row', 'first_data_row', 'last_data_row'] if key in table} | {
+                'columns': [{key: column[key] for key in ['id', 'header', 'types'] if key in column}
+                            for column in columns[:STRUCTURE_SUMMARY_MAX_COLUMNS]]} |
+                ({'required_filter_columns': list(table['required_filter_columns'])}
+                 if table.get('required_filter_columns') else {}))
+            emitted_tables += 1
+        sheets.append({key: sheet[key] for key in
+            ['id', 'name', 'index', 'visibility', 'max_row', 'max_column'] if key in sheet} |
+            {'tables': published})
+        if emitted_tables >= STRUCTURE_SUMMARY_MAX_TABLES and emitted_tables < total_tables:
+            complete = False
+            break
+    return {'scope': 'configured_tables', 'complete': complete,
+            'sheet_count': len(all_sheets), 'table_count': total_tables, 'sheets': sheets}
+
+
 def select(record, sheet_id, cell_range=None, table_id=None, filters=None, *, row_start=0, row_limit=None):
     sheet = next((item for item in record['sheets'] if item['id'] == sheet_id), None)
     if sheet is None:

@@ -77,7 +77,8 @@ def publish(document, db):
     # Publication is complete before a new pointer is installed. Existing pointers survive failure.
     store.put('spreadsheet_version', str(doc.id) + ':' + record['version'], record)
     doc.meta = dict(doc.meta or {}) | {'spreadsheet_evidence': {
-        'document_id': str(doc.id), 'version': record['version'], 'sha256': record['sha256']}}
+        'document_id': str(doc.id), 'version': record['version'], 'sha256': record['sha256'],
+        'structure': spreadsheet.structure_summary(record)}}
     db.flush()
     return record
 
