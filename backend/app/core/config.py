@@ -107,6 +107,8 @@ class Settings(BaseSettings):
     pageindex_tessdata: str = '/usr/share/tesseract-ocr/5/tessdata'
     pageindex_build_concurrency: int = Field(default=4, ge=1, le=8)
     pageindex_build_timeout: int = 300    # 建树单次 LLM 调用超时（秒）
+    # Candidate selection only; indexing and independent evidence verification keep their policies.
+    pageindex_retrieve_disable_thinking: bool = True
     pageindex_retrieve_timeout: int = 60  # 检索推理单次 LLM 调用超时（秒）
     pageindex_retrieve_attempts: int = 3  # 检索选节点「空判定」重试上限（BUG-V4-01：
                                           # 推理型模型对同一 prompt 非确定性返回空数组，

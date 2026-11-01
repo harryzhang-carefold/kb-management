@@ -113,7 +113,8 @@ class LLMClient:
 
     def chat(self, messages: list[dict], model: Optional[str] = None,
              temperature: float = 0.0, max_tokens: int = 4096,
-             timeout: float = 60, json_mode: bool = False) -> str:
+             timeout: float = 60, json_mode: bool = False,
+             thinking: Optional[bool] = None) -> str:
         """非流式 chat，返回完整文本。
 
         json_mode=True 时请求 response_format=json_object（vllm 支持）；
@@ -127,6 +128,11 @@ class LLMClient:
             max_tokens=max_tokens,
             timeout=timeout,
         )
+        # A caller may choose a lighter candidate-selection policy. Other callers
+        # (indexing, summaries) keep their prior model default. Do not send a
+        # provider-specific switch to unverified compatible endpoints.
+        if thinking is not None and model in {'deepseek-flash', 'deepseek-v4-pro'}:
+            base['extra_body'] = {'thinking': {'type': 'enabled' if thinking else 'disabled'}}
         if not json_mode:
             resp = self.client.chat.completions.create(**base)  # type: ignore[arg-type]
             return resp.choices[0].message.content or ""

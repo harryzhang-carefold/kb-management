@@ -984,6 +984,7 @@ def retrieve(kb_id: str | list[str], question: str, top_n: int = 5,
                 raw = llm_client.chat(
                     messages, temperature=0.0, max_tokens=RETRIEVE_MAX_TOKENS,
                     timeout=settings.pageindex_retrieve_timeout, json_mode=True,
+                    thinking=False if settings.pageindex_retrieve_disable_thinking else None,
                 )
                 data = _extract_json(raw)
                 sel = data.get("selected", []) if isinstance(data, dict) else []

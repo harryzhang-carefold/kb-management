@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-01
+
+- T09 candidate selection only: the existing PageIndex retrieval call can explicitly disable the known DeepSeek model's thinking mode through the typed `pageindex_retrieve_disable_thinking` setting (test default true; false restores prior provider behavior). Index building, original evidence reading, OCR and independent citation verification remain unchanged. No query/scope rewrite, new executor, fixed workflow or source cache. Other LLMClient callers and unverified compatible model names keep their original wire requests.
+- Nine new wire/selection regressions pass (eight initially failed); 79 non-database mechanism checks pass. The combined isolated PostgreSQL run reports **88 passed / 1 skipped / 1 pre-existing HTTP-error-envelope failure**. The exact failure reproduces against unchanged baseline 18b64de; the assertion was not edited or hidden. Temporary database/source fixtures were cleaned up. Python compile and diff checks pass; unrelated `tests/test_native_spreadsheet.py` changes are untouched.
+- Same-Agent natural-question before/after, unseen paraphrases, exact-row negative/positive and private-source tests are required after the approved versioned release. No speed or quality improvement is claimed before live evidence. Details and the known HTTP-test limitation: `docs/t09-candidate-model-policy-2026-11-01.md`.
+
 ## 2026-10-31
 
 - Follow-up to `b373818`: live N1 was **35.177s**, N2 **88.276s**, so no overall improvement is claimed. Logs proved the exact-code KB used zero selection-model calls, but an embedding KB disabled the all-or-nothing joint optimization and unrelated pure PageIndex KBs still called models separately. Group the bounded pure PageIndex **subset** while passing remaining mixed/embedding KBs through their original engine exactly once; preserve every authorized source and existing fallback. Relevant tests **65/65 pass**, including actual MCP subset merge and non-duplication. Agent stays at eb48d47 and the original source/read/citation contracts are unchanged; this follow-up still requires real end-to-end comparison.
